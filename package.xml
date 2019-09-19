@@ -9,6 +9,7 @@
 
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>parameter_server_interfaces</depend>
   <buildtool_depend>ament_cmake</buildtool_depend>
 

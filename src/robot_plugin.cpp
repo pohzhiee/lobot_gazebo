@@ -46,10 +46,10 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
             {
                 auto res = resp.get();
                 joint_names = res->joints;
-                for (auto &j : res->joints)
-                {
-                    RCLCPP_INFO(impl_->ros_node_->get_logger(), "Joint: %s", j.c_str());
-                }
+                // for (auto &j : res->joints)
+                // {
+                //     RCLCPP_INFO(impl_->ros_node_->get_logger(), "Joint: %s", j.c_str());
+                // }
             }
             else
             {
@@ -95,8 +95,7 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
                 auto j = this->impl_->joints_[i];
                 j->SetVelocity(0, msg->data);
                 // this->impl_->commands_[i] = msg->data;
-                RCLCPP_INFO(this->impl_->ros_node_->get_logger(), "Joint %d updated with %f", i, msg->data);
-
+                // RCLCPP_INFO(this->impl_->ros_node_->get_logger(), "Joint %d updated with %f", i, msg->data);
             };
 
             auto sub = impl_->ros_node_->create_subscription<std_msgs::msg::Float64>(topicName, rclcpp::SensorDataQoS(), fp);
