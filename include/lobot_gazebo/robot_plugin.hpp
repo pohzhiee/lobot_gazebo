@@ -55,6 +55,8 @@ public:
     gazebo::common::Time last_update_time_;
 
     std::vector<double> commands_;
+
+    rclcpp::Subscription<ros2_control_interfaces::msg::JointCommands>::SharedPtr cmd_subscription_;
 };
 
 

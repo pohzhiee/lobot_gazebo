@@ -87,7 +87,7 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
 
     // Create the joint subscription
     impl_->commands_.resize(impl_->joints_.size());
-    auto sub = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointCommands>(
+    impl_->cmd_subscription_ = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointCommands>(
         "/" + robotName + "/sim/cmd", rclcpp::SensorDataQoS(),
         std::bind(&RobotPlugin::CommandSubscriptionCallback, this, std::placeholders::_1));
 
@@ -144,10 +144,10 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         return;
     }
 
-    for (size_t i = 0; i < joints_.size(); i++)
+     for (size_t i = 0; i < joints_.size(); i++)
     {
         joints_[i]->SetForce(0, commands_[i]);
-    }
+    } 
 
     // Update time
     last_update_time_ = current_time;
@@ -155,30 +155,65 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
 
 void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::JointCommands::UniquePtr msg)
 {
-    auto robotCmdSize = impl_->commands_.size();
-    auto inputCmdSize = msg->commands.size();
-    if (robotCmdSize == inputCmdSize)
-    {
-        impl_->commands_ = msg->commands;
-    }
-    else if (robotCmdSize < inputCmdSize)
-    {
-        RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving more input than joints in robot, truncating...");
-        for (size_t i = 0; i < robotCmdSize; i++)
+    // Unsafe method which writes directly to JointPtr
+    {/*
+        auto robotJointSize = impl_->joints_.size();
+        auto inputCmdSize = msg->commands.size();
+        if (robotJointSize == inputCmdSize)
         {
-            impl_->commands_[i] = msg->commands[i];
+            for (size_t i = 0; i < robotJointSize; i++)
+            {
+                impl_->joints_[i]->SetForce(0, msg->commands[i]);
+            }
+        }
+        else if (robotJointSize < inputCmdSize)
+        {
+            RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving more input than joints in robot, truncating...");
+            for (size_t i = 0; i < robotJointSize; i++)
+            {
+                impl_->joints_[i]->SetForce(0, msg->commands[i]);
+            }
+        }
+        else
+        {
+            RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving less input than joints in robot, some joints not controlled...");
+            for (size_t i = 0; i < inputCmdSize; i++)
+            {
+                impl_->joints_[i]->SetForce(0, msg->commands[i]);
+            }
+        }
+    */
+    }
+
+
+    // Unsafe method which uses buffer
+    {
+        auto robotCmdSize = impl_->commands_.size();
+        auto inputCmdSize = msg->commands.size();
+        if (robotCmdSize == inputCmdSize)
+        {
+            impl_->commands_ = msg->commands;
+        }
+        else if (robotCmdSize < inputCmdSize)
+        {
+            RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving more input than joints in robot, truncating...");
+            for (size_t i = 0; i < robotCmdSize; i++)
+            {
+                impl_->commands_[i] = msg->commands[i];
+            }
+        }
+        else
+        {
+            RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving less input than joints in robot, some joints not controlled...");
+            for (size_t i = 0; i < inputCmdSize; i++)
+            {
+                impl_->commands_[i] = msg->commands[i];
+            }
         }
     }
-    else
-    {
-        RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving less input than joints in robot, some joints not controlled...");
-        for (size_t i = 0; i < inputCmdSize; i++)
-        {
-            impl_->commands_[i] = msg->commands[i];
-        }
-    }
+
     // Method with safer value assign but longer computation time, now commented
-    {
+     {/*
         auto inputNameSize = msg->joint_names.size();
         auto inputCmdSize = msg->commands.size();
         auto robotCmdSize = impl_->commands_.size();
@@ -207,20 +242,25 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
                 }
             }
         }
-        else{
-            for(size_t i = 0;i<inputNameSize;i++){
+        else
+        {
+            for (size_t i = 0; i < inputNameSize; i++)
+            {
                 auto inputJointName = msg->joint_names[i];
-                for(size_t j = 0;j<impl_->joints_.size();j++){
+                for (size_t j = 0; j < impl_->joints_.size(); j++)
+                {
                     auto joint = impl_->joints_[j];
                     // Check that the input joint name matches with any registered joints, if matches write the command
-                    if(joint->GetName().compare(inputJointName) == 0){
+                    if (joint->GetName().compare(inputJointName) == 0)
+                    {
                         impl_->commands_[j] = msg->commands[i];
                         break;
                     }
                 }
             }
         }
-    }
+    */
+    } 
 }
 
 } //end namespace gazebo_plugins
