@@ -8,6 +8,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <parameter_server_interfaces/srv/get_all_joints.hpp>
+#include <ros2_control_interfaces/msg/joint_commands.hpp>
 
 
 namespace gazebo_plugins
@@ -24,6 +25,7 @@ public:
     void OnUpdate(const gazebo::common::UpdateInfo & _info);
     /// A pointer to the GazeboROS node.
     gazebo_ros::Node::SharedPtr ros_node_;
+
 
 /**
  * @brief Connection to event called at every world iteration.
@@ -52,7 +54,6 @@ public:
     /// Last update time.
     gazebo::common::Time last_update_time_;
 
-    std::vector<rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr> joint_cmd_subscriptions_;
     std::vector<double> commands_;
 };
 
@@ -67,6 +68,12 @@ public:
 private:
     /// Private data pointer
     std::unique_ptr<RobotPluginPrivate> impl_;
+    /**
+     * @brief Callback function whenever a new command is received. Updates command buffer
+     * 
+     * @param msg 
+     */
+    void CommandSubscriptionCallback(ros2_control_interfaces::msg::JointCommands::UniquePtr msg);
 };
 
 // Tell Gazebo about this plugin, so that Gazebo can call Load on this plugin.

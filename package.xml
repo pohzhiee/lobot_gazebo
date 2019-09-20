@@ -11,6 +11,7 @@
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>parameter_server_interfaces</depend>
+  <depend>ros2_control_interfaces</depend>
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <test_depend>ament_lint_auto</test_depend>

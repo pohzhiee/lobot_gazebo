@@ -35,7 +35,7 @@
 #include <gazebo/physics/Joint.hh>
 #include <gazebo/physics/Model.hh>
 #include <gazebo/physics/World.hh>
-#include <gazebo_plugins/gazebo_ros_joint_state_publisher.hpp>
+#include "lobot_gazebo/my_joint_state_publisher.hpp"
 #include <gazebo_ros/conversions/builtin_interfaces.hpp>
 #include <gazebo_ros/node.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -49,7 +49,7 @@
 
 namespace gazebo_plugins
 {
-class GazeboRosJointStatePublisherPrivate
+class MyJointStatePublisherPrivate
 {
 public:
     /// Callback to be called at every simulation iteration.
@@ -75,16 +75,16 @@ public:
     gazebo::event::ConnectionPtr update_connection_;
 };
 
-GazeboRosJointStatePublisher::GazeboRosJointStatePublisher()
-    : impl_(std::make_unique<GazeboRosJointStatePublisherPrivate>())
+MyJointStatePublisher::MyJointStatePublisher()
+    : impl_(std::make_unique<MyJointStatePublisherPrivate>())
 {
 }
 
-GazeboRosJointStatePublisher::~GazeboRosJointStatePublisher()
+MyJointStatePublisher::~MyJointStatePublisher()
 {
 }
 
-void GazeboRosJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
+void MyJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
 {
     // ROS node
     impl_->ros_node_ = gazebo_ros::Node::Get(sdf);
@@ -188,10 +188,10 @@ void GazeboRosJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::El
 
     // Callback on every iteration
     impl_->update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
-        std::bind(&GazeboRosJointStatePublisherPrivate::OnUpdate, impl_.get(), std::placeholders::_1));
+        std::bind(&MyJointStatePublisherPrivate::OnUpdate, impl_.get(), std::placeholders::_1));
 }
 
-void GazeboRosJointStatePublisherPrivate::OnUpdate(const gazebo::common::UpdateInfo &info)
+void MyJointStatePublisherPrivate::OnUpdate(const gazebo::common::UpdateInfo &info)
 {
     gazebo::common::Time current_time = info.simTime;
 
@@ -235,5 +235,5 @@ void GazeboRosJointStatePublisherPrivate::OnUpdate(const gazebo::common::UpdateI
     last_update_time_ = current_time;
 }
 
-GZ_REGISTER_MODEL_PLUGIN(GazeboRosJointStatePublisher)
+GZ_REGISTER_MODEL_PLUGIN(MyJointStatePublisher)
 } // namespace gazebo_plugins

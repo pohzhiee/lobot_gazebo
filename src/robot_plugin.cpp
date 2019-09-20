@@ -1,5 +1,7 @@
 #include "lobot_gazebo/robot_plugin.hpp"
 
+#include <functional>
+
 namespace gazebo_plugins
 {
 RobotPlugin::RobotPlugin()
@@ -66,7 +68,6 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
         RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to start, check that parameter server is launched");
     }
 
-    // Register all the joints based on the joint names from parameter server
     for (auto &joint_name : joint_names)
     {
         auto joint = _model->GetJoint(joint_name);
@@ -84,24 +85,12 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
     std::string node_name = _sdf->Get<std::string>("name");
     RCLCPP_INFO(impl_->ros_node_->get_logger(), "Plugin name %s\n", node_name.c_str());
 
-    // Create the joint subscriptions
+    // Create the joint subscription
     impl_->commands_.resize(impl_->joints_.size());
-    if (impl_->joints_.size() != 0)
-    {
-        for (size_t i = 0; i < impl_->joints_.size(); i++)
-        {
-            auto topicName = "/" + robotName + "/" + impl_->joints_[i]->GetName() + "/cmd";
-            auto fp = [this, i](std_msgs::msg::Float64::UniquePtr msg) {
-                auto j = this->impl_->joints_[i];
-                j->SetVelocity(0, msg->data);
-                // this->impl_->commands_[i] = msg->data;
-                // RCLCPP_INFO(this->impl_->ros_node_->get_logger(), "Joint %d updated with %f", i, msg->data);
-            };
+    auto sub = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointCommands>(
+        "/" + robotName + "/sim/cmd", rclcpp::SensorDataQoS(),
+        std::bind(&RobotPlugin::CommandSubscriptionCallback, this, std::placeholders::_1));
 
-            auto sub = impl_->ros_node_->create_subscription<std_msgs::msg::Float64>(topicName, rclcpp::SensorDataQoS(), fp);
-            impl_->joint_cmd_subscriptions_.push_back(sub);
-        }
-    }
     // Set update rate stuff
     // Update rate
     double update_rate = 100.0;
@@ -155,12 +144,83 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         return;
     }
 
-    auto realTime = _info.realTime.Double();
-    auto simTime = _info.simTime.Double();
+    for (size_t i = 0; i < joints_.size(); i++)
+    {
+        joints_[i]->SetForce(0, commands_[i]);
+    }
+
     // Update time
     last_update_time_ = current_time;
-    // RCLCPP_WARN(ros_node_->get_logger(),
-    //             "[%f] Plugin update called", realTime);
+}
+
+void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::JointCommands::UniquePtr msg)
+{
+    auto robotCmdSize = impl_->commands_.size();
+    auto inputCmdSize = msg->commands.size();
+    if (robotCmdSize == inputCmdSize)
+    {
+        impl_->commands_ = msg->commands;
+    }
+    else if (robotCmdSize < inputCmdSize)
+    {
+        RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving more input than joints in robot, truncating...");
+        for (size_t i = 0; i < robotCmdSize; i++)
+        {
+            impl_->commands_[i] = msg->commands[i];
+        }
+    }
+    else
+    {
+        RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving less input than joints in robot, some joints not controlled...");
+        for (size_t i = 0; i < inputCmdSize; i++)
+        {
+            impl_->commands_[i] = msg->commands[i];
+        }
+    }
+    // Method with safer value assign but longer computation time, now commented
+    {
+        auto inputNameSize = msg->joint_names.size();
+        auto inputCmdSize = msg->commands.size();
+        auto robotCmdSize = impl_->commands_.size();
+        // Ignore joint names if size dont match with commands, basically runs the unsafe assignment method found above
+        if (inputNameSize != inputCmdSize)
+        {
+            RCLCPP_ERROR_ONCE(impl_->ros_node_->get_logger(), "Input message has uneven lengths of joint names and commands, ignoring names");
+            if (robotCmdSize == inputCmdSize)
+            {
+                impl_->commands_ = msg->commands;
+            }
+            else if (robotCmdSize < inputCmdSize)
+            {
+                RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving more input than joints in robot, truncating...");
+                for (size_t i = 0; i < robotCmdSize; i++)
+                {
+                    impl_->commands_[i] = msg->commands[i];
+                }
+            }
+            else
+            {
+                RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving less input than joints in robot, some joints not controlled...");
+                for (size_t i = 0; i < inputCmdSize; i++)
+                {
+                    impl_->commands_[i] = msg->commands[i];
+                }
+            }
+        }
+        else{
+            for(size_t i = 0;i<inputNameSize;i++){
+                auto inputJointName = msg->joint_names[i];
+                for(size_t j = 0;j<impl_->joints_.size();j++){
+                    auto joint = impl_->joints_[j];
+                    // Check that the input joint name matches with any registered joints, if matches write the command
+                    if(joint->GetName().compare(inputJointName) == 0){
+                        impl_->commands_[j] = msg->commands[i];
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 } //end namespace gazebo_plugins

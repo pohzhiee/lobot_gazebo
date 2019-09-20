@@ -26,6 +26,7 @@ find_package(gazebo_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(parameter_server_interfaces REQUIRED)
+find_package(ros2_control_interfaces REQUIRED)
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GAZEBO_CXX_FLAGS}")
 target_include_directories(robot_plugin PUBLIC include)
@@ -36,16 +37,9 @@ ament_target_dependencies(
   rclcpp
   std_msgs
   parameter_server_interfaces
+  ros2_control_interfaces
 )
 target_include_directories(my_joint_state_publisher PUBLIC include)
-ament_target_dependencies(
-  robot_plugin
-  gazebo_dev
-  gazebo_ros
-  rclcpp
-  std_msgs
-  parameter_server_interfaces
-)
 ament_target_dependencies(
   my_joint_state_publisher
   gazebo_dev

@@ -11,6 +11,7 @@
                 "/usr/include/ignition/msgs1",
                 "/usr/include/ignition/transport4",
                 "${workspaceFolder}/../../install/hardware_interface/include",
+                "${workspaceFolder}/../../install/ros2_control_interfaces/include",
                 "${workspaceFolder}/../../install/parameter_server_interfaces/include"
             ],
             "intelliSenseMode": "gcc-x64",
