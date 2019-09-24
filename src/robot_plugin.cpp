@@ -1,6 +1,7 @@
 #include "lobot_gazebo/robot_plugin.hpp"
 
 #include <functional>
+#include <string>
 
 namespace gazebo_plugins
 {
@@ -144,10 +145,10 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         return;
     }
 
-     for (size_t i = 0; i < joints_.size(); i++)
-    {
-        joints_[i]->SetForce(0, commands_[i]);
-    } 
+    //  for (size_t i = 0; i < joints_.size(); i++)
+    // {
+    //     joints_[i]->SetForce(0, commands_[i]);
+    // } 
 
     // Update time
     last_update_time_ = current_time;
@@ -155,15 +156,23 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
 
 void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::JointCommands::UniquePtr msg)
 {
-    // Unsafe method which writes directly to JointPtr
-    {/*
+    // Safe method which writes directly to JointPtr
+    {
         auto robotJointSize = impl_->joints_.size();
         auto inputCmdSize = msg->commands.size();
         if (robotJointSize == inputCmdSize)
         {
-            for (size_t i = 0; i < robotJointSize; i++)
+            for (size_t i = 0; i < inputCmdSize; i++)
             {
-                impl_->joints_[i]->SetForce(0, msg->commands[i]);
+                auto robotJoints = impl_->joints_;
+                auto msgJoints = msg->joint_names;
+                auto jointName = msgJoints[i];
+                auto fp = [&jointName](const gazebo::physics::JointPtr &jointPtr) -> bool { return jointName.compare(jointPtr->GetName()) == 0; };
+                auto joint_iter = std::find_if(robotJoints.cbegin(), robotJoints.cend(), fp);
+                if(joint_iter != robotJoints.cend()){
+                    auto robotJoint = *joint_iter;
+                    robotJoint->SetForce(0,msg->commands[i]);
+                }
             }
         }
         else if (robotJointSize < inputCmdSize)
@@ -182,12 +191,12 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
                 impl_->joints_[i]->SetForce(0, msg->commands[i]);
             }
         }
-    */
+    
     }
 
 
-    // Unsafe method which uses buffer
-    {
+    // Unsafe method which uses buffer, when using this method go to OnUpdate and uncomment the loop to set force based on buffer
+    {/*
         auto robotCmdSize = impl_->commands_.size();
         auto inputCmdSize = msg->commands.size();
         if (robotCmdSize == inputCmdSize)
@@ -210,6 +219,7 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
                 impl_->commands_[i] = msg->commands[i];
             }
         }
+    */
     }
 
     // Method with safer value assign but longer computation time, now commented
