@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(lobot_gazebo)
+project(ros2_control_gazebo)
 
 
 # Default to C99

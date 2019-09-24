@@ -1,4 +1,4 @@
-#include "lobot_gazebo/robot_plugin.hpp"
+#include "ros2_control_gazebo/robot_plugin.hpp"
 
 #include <functional>
 #include <string>
