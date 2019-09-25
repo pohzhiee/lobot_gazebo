@@ -92,7 +92,6 @@ void MyJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPt
     auto request_node = std::make_shared<rclcpp::Node>("robot_joint_state_plugin_request_node");
     auto client1 = request_node->create_client<parameter_server_interfaces::srv::GetAllJoints>("/GetAllControlJoints");
     using namespace std::chrono_literals;
-    client1->wait_for_service(1s);
     // Joints
     std::vector<std::string> joint_names;
     std::string robotName;
@@ -108,39 +107,39 @@ void MyJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPt
         RCLCPP_ERROR(impl_->ros_node_->get_logger(), "Robot field not populated in sdf");
     }
 
-    // Get all the joint names for the robot
-    if (client1->service_is_ready())
+    auto retryCount = 0;
+    while (retryCount < 8)
     {
+        client1->wait_for_service(1s);
+        // Get all the joint names for the robot
+        if (!client1->service_is_ready())
+        {
+            RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to start, check that parameter server is launched");
+            retryCount++;
+            continue;
+        }
+
         auto req = std::make_shared<parameter_server_interfaces::srv::GetAllJoints::Request>();
         req->robot = robotName;
         auto resp = client1->async_send_request(req);
-        RCLCPP_INFO(impl_->ros_node_->get_logger(), "Sending async request...");
         auto spin_status = rclcpp::spin_until_future_complete(request_node, resp, 5s);
-        if (spin_status == rclcpp::executor::FutureReturnCode::SUCCESS)
-        {
-            auto status = resp.wait_for(1s);
-            if (status == std::future_status::ready)
-            {
-                auto res = resp.get();
-                joint_names = res->joints;
-                // for (auto &j : res->joints)
-                // {
-                //     RCLCPP_INFO(impl_->ros_node_->get_logger(), "Joint: %s", j.c_str());
-                // }
-            }
-            else
-            {
-                RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to execute");
-            }
-        }
-        else
+        if (spin_status != rclcpp::executor::FutureReturnCode::SUCCESS)
         {
             RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to execute (spin failed)");
+            retryCount++;
+            continue;
         }
-    }
-    else
-    {
-        RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to start, check that parameter server is launched");
+        auto status = resp.wait_for(1s);
+        if (status != std::future_status::ready)
+        {
+            RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to execute");
+            retryCount++;
+            continue;
+        }
+
+        auto res = resp.get();
+        joint_names = res->joints;
+        break;
     }
 
     // Register all the joints based on the joint names from parameter server

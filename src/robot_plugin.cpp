@@ -34,39 +34,39 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Robot field not populated in sdf");
     }
 
-    // Get all the joint names for the robot
-    if (client1->service_is_ready())
+    // Get the joints from parameter server
+    auto retryCount = 0;
+    while (retryCount < 8)
     {
+        client1->wait_for_service(1s);
+        if (!client1->service_is_ready())
+        {
+            RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to start, check that parameter server is launched");
+            retryCount++;
+            continue;
+        }
+
         auto req = std::make_shared<parameter_server_interfaces::srv::GetAllJoints::Request>();
         req->robot = robotName;
         auto resp = client1->async_send_request(req);
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Sending async request...");
         auto spin_status = rclcpp::spin_until_future_complete(request_node, resp, 5s);
-        if (spin_status == rclcpp::executor::FutureReturnCode::SUCCESS)
-        {
-            auto status = resp.wait_for(1s);
-            if (status == std::future_status::ready)
-            {
-                auto res = resp.get();
-                joint_names = res->joints;
-                // for (auto &j : res->joints)
-                // {
-                //     RCLCPP_INFO(impl_->ros_node_->get_logger(), "Joint: %s", j.c_str());
-                // }
-            }
-            else
-            {
-                RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to execute");
-            }
-        }
-        else
+        if (spin_status != rclcpp::executor::FutureReturnCode::SUCCESS)
         {
             RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to execute (spin failed)");
+            retryCount++;
+            continue;
         }
-    }
-    else
-    {
-        RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to start, check that parameter server is launched");
+        auto status = resp.wait_for(1s);
+        if (status != std::future_status::ready)
+        {
+            RCLCPP_ERROR(impl_->ros_node_->get_logger(), "GetAllJoints service failed to execute");
+            retryCount++;
+            continue;
+        }
+        auto res = resp.get();
+        joint_names = res->joints;
+        break;
     }
 
     for (auto &joint_name : joint_names)
@@ -148,7 +148,7 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
     //  for (size_t i = 0; i < joints_.size(); i++)
     // {
     //     joints_[i]->SetForce(0, commands_[i]);
-    // } 
+    // }
 
     // Update time
     last_update_time_ = current_time;
@@ -169,9 +169,10 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
                 auto jointName = msgJoints[i];
                 auto fp = [&jointName](const gazebo::physics::JointPtr &jointPtr) -> bool { return jointName.compare(jointPtr->GetName()) == 0; };
                 auto joint_iter = std::find_if(robotJoints.cbegin(), robotJoints.cend(), fp);
-                if(joint_iter != robotJoints.cend()){
+                if (joint_iter != robotJoints.cend())
+                {
                     auto robotJoint = *joint_iter;
-                    robotJoint->SetForce(0,msg->commands[i]);
+                    robotJoint->SetForce(0, msg->commands[i]);
                 }
             }
         }
@@ -191,12 +192,11 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
                 impl_->joints_[i]->SetForce(0, msg->commands[i]);
             }
         }
-    
     }
 
-
     // Unsafe method which uses buffer, when using this method go to OnUpdate and uncomment the loop to set force based on buffer
-    {/*
+    {
+        /*
         auto robotCmdSize = impl_->commands_.size();
         auto inputCmdSize = msg->commands.size();
         if (robotCmdSize == inputCmdSize)
@@ -223,7 +223,7 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
     }
 
     // Method with safer value assign but longer computation time, now commented
-     {/*
+    { /*
         auto inputNameSize = msg->joint_names.size();
         auto inputCmdSize = msg->commands.size();
         auto robotCmdSize = impl_->commands_.size();
@@ -270,7 +270,7 @@ void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::Join
             }
         }
     */
-    } 
+    }
 }
 
 } //end namespace gazebo_plugins
