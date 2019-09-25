@@ -10,6 +10,8 @@
 #include <parameter_server_interfaces/srv/get_all_joints.hpp>
 #include <ros2_control_interfaces/msg/joint_commands.hpp>
 
+#include <unordered_map>
+
 
 namespace gazebo_plugins
 {
@@ -38,6 +40,7 @@ public:
  * 
  */
     std::vector<gazebo::physics::JointPtr> joints_;
+    std::unordered_map<std::string, gazebo::physics::JointPtr> joints_map_ = {};
 
     /// Pointer to model.
     gazebo::physics::ModelPtr model_;

@@ -13,7 +13,6 @@ RobotPlugin::RobotPlugin()
 void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
 {
     impl_->model_ = _model;
-    impl_->joints_ = {};
     impl_->ros_node_ = gazebo_ros::Node::Get(_sdf);
     auto request_node = std::make_shared<rclcpp::Node>("robot_plugin_request_node");
     auto client1 = request_node->create_client<parameter_server_interfaces::srv::GetAllJoints>("/GetAllControlJoints");
@@ -78,7 +77,8 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
         }
         else
         {
-            impl_->joints_.push_back(joint);
+            impl_->joints_map_[joint_name] = joint;
+            // impl_->joints_.push_back(joint);
             RCLCPP_INFO(impl_->ros_node_->get_logger(), "Registering joint %s",
                         joint_name.c_str());
         }
@@ -87,7 +87,6 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
     RCLCPP_INFO(impl_->ros_node_->get_logger(), "Plugin name %s\n", node_name.c_str());
 
     // Create the joint subscription
-    impl_->commands_.resize(impl_->joints_.size());
     impl_->cmd_subscription_ = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointCommands>(
         "/" + robotName + "/sim/cmd", rclcpp::SensorDataQoS(),
         std::bind(&RobotPlugin::CommandSubscriptionCallback, this, std::placeholders::_1));
@@ -156,40 +155,29 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
 
 void RobotPlugin::CommandSubscriptionCallback(ros2_control_interfaces::msg::JointCommands::UniquePtr msg)
 {
-    // Safe method which writes directly to JointPtr
+    // Uses map to write directly to JointPtr
     {
-        auto robotJointSize = impl_->joints_.size();
-        auto inputCmdSize = msg->commands.size();
-        if (robotJointSize == inputCmdSize)
+        auto msgNameSize = msg->joint_names.size();
+        auto msgCmdSize = msg->commands.size();
+        if (msgNameSize != msgCmdSize)
         {
-            for (size_t i = 0; i < inputCmdSize; i++)
-            {
-                auto robotJoints = impl_->joints_;
-                auto msgJoints = msg->joint_names;
-                auto jointName = msgJoints[i];
-                auto fp = [&jointName](const gazebo::physics::JointPtr &jointPtr) -> bool { return jointName.compare(jointPtr->GetName()) == 0; };
-                auto joint_iter = std::find_if(robotJoints.cbegin(), robotJoints.cend(), fp);
-                if (joint_iter != robotJoints.cend())
-                {
-                    auto robotJoint = *joint_iter;
-                    robotJoint->SetForce(0, msg->commands[i]);
-                }
-            }
+            RCLCPP_ERROR_ONCE(impl_->ros_node_->get_logger(), "Message number of joints don't match number of commands");
         }
-        else if (robotJointSize < inputCmdSize)
+        //If more names than commands, we ignore the names without command
+        if (msgNameSize > msgCmdSize)
+            msgNameSize = msgCmdSize;
+
+        for (size_t i = 0; i < msgNameSize; i++)
         {
-            RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving more input than joints in robot, truncating...");
-            for (size_t i = 0; i < robotJointSize; i++)
+            auto command = msg->commands[i];
+            auto name = msg->joint_names[i];
+            auto jointPtr = impl_->joints_map_[name];
+            if (jointPtr == nullptr)
             {
-                impl_->joints_[i]->SetForce(0, msg->commands[i]);
+                RCLCPP_ERROR(impl_->ros_node_->get_logger(), "Joint pointer for joint %s is nullptr", name.c_str());
             }
-        }
-        else
-        {
-            RCLCPP_WARN_ONCE(impl_->ros_node_->get_logger(), "Receiving less input than joints in robot, some joints not controlled...");
-            for (size_t i = 0; i < inputCmdSize; i++)
-            {
-                impl_->joints_[i]->SetForce(0, msg->commands[i]);
+            else{
+                jointPtr->SetForce(0, command);
             }
         }
     }
