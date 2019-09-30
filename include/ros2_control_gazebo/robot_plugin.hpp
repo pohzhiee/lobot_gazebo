@@ -8,9 +8,12 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <parameter_server_interfaces/srv/get_all_joints.hpp>
-#include <ros2_control_interfaces/msg/joint_commands.hpp>
+#include <parameter_server_interfaces/srv/get_controller_pid.hpp>
+#include <ros2_control_interfaces/msg/joint_control.hpp>
+
 
 #include <unordered_map>
+#include <memory>
 
 
 namespace gazebo_plugins
@@ -19,47 +22,25 @@ class RobotPluginPrivate
 {
 public:
 
-/**
- * @brief Callback to be called at every simulation iteration.
- * 
- * @param _info Updated simulation info.
- */
     void OnUpdate(const gazebo::common::UpdateInfo & _info);
-    /// A pointer to the GazeboROS node.
     gazebo_ros::Node::SharedPtr ros_node_;
 
 
-/**
- * @brief Connection to event called at every world iteration.
- * 
- */
+    gazebo::physics::ModelPtr model_;
+    std::string robot_name_;
+    
+    std::unordered_map<std::string, gazebo::physics::JointPtr> joints_map_ = {};
+    std::unordered_map<std::string, std::shared_ptr<gazebo::physics::JointController>> joint_controllers_map_ = {};
+    std::unordered_map<std::string, double> goal_map_ = {};
+
+    double update_period_;
+    gazebo::common::Time last_update_time_;
+    gazebo::common::Time last_print_time_;
     gazebo::event::ConnectionPtr update_connection_;
 
-/**
- * @brief Pointer to joints
- * 
- */
-    std::vector<gazebo::physics::JointPtr> joints_;
-    std::unordered_map<std::string, gazebo::physics::JointPtr> joints_map_ = {};
+    rclcpp::Subscription<ros2_control_interfaces::msg::JointControl>::SharedPtr cmd_subscription_;
+    void CommandSubscriptionCallback(ros2_control_interfaces::msg::JointControl::UniquePtr msg);
 
-    /// Pointer to model.
-    gazebo::physics::ModelPtr model_;
-
-    /// Protect variables accessed on callbacks.
-    std::mutex lock_;
-
-/**
- * @brief Update period in seconds
- * 
- */
-    double update_period_;
-
-    /// Last update time.
-    gazebo::common::Time last_update_time_;
-
-    std::vector<double> commands_;
-
-    rclcpp::Subscription<ros2_control_interfaces::msg::JointCommands>::SharedPtr cmd_subscription_;
 };
 
 
@@ -71,14 +52,11 @@ public:
     void Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf) override;
     void Reset() override;
 private:
-    /// Private data pointer
-    std::unique_ptr<RobotPluginPrivate> impl_;
-    /**
-     * @brief Callback function whenever a new command is received. Updates command buffer
-     * 
-     * @param msg 
-     */
-    void CommandSubscriptionCallback(ros2_control_interfaces::msg::JointCommands::UniquePtr msg);
+    std::shared_ptr<RobotPluginPrivate> impl_;
+    // Helper functions
+    std::vector<std::string> GetJoints(const std::string &robotName, rclcpp::Node::SharedPtr request_node);
+    std::unordered_map<std::string, gazebo::common::PID> GetPidParameters(const std::string &robot_name, rclcpp::Node::SharedPtr request_node);
+    void SetUpdateRate(sdf::ElementPtr _sdf);
 };
 
 // Tell Gazebo about this plugin, so that Gazebo can call Load on this plugin.

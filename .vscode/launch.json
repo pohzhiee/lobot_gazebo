@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch gzserver",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/gzserver",
+            "args": ["/home/pohzhiee/biped_ros2_new/install/lobot_description/share/lobot_description/robots/biped.sdf", "-s", "libgazebo_ros_init.so", "-s", "libgazebo_ros_factory.so", "__log_level:=debug"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "miDebuggerPath": "/usr/bin/gdb"
+        }
+    ]
+}
