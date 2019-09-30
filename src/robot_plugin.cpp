@@ -69,6 +69,11 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
 
     impl_->last_update_time_ = _model->GetWorld()->SimTime();
 
+    //Create reset service
+    auto reset_cb_fp = std::bind(&RobotPluginPrivate::ResetServiceCallback, impl_, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    impl_->reset_service_ =
+        impl_->ros_node_->create_service<Empty>("/" + robotName + "/reset", reset_cb_fp);
+
     impl_->update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
         std::bind(&RobotPluginPrivate::OnUpdate, impl_.get(), std::placeholders::_1));
 } // namespace gazebo_plugins
@@ -90,7 +95,8 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         last_update_time_ = current_time;
     }
     // Update goal
-    for(auto &pair : goal_map_){
+    for (auto &pair : goal_map_)
+    {
         auto joint_name = pair.first;
         auto goal = pair.second;
         joint_controllers_map_[joint_name]->SetPositionTarget(robot_name_ + "::" + joint_name, goal);
@@ -105,7 +111,8 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         return;
     }
     constexpr auto print_period = 6.0;
-    for(auto &pair : joint_controllers_map_){
+    for (auto &pair : joint_controllers_map_)
+    {
         auto jointName = pair.first;
         auto &controllerPtr = pair.second;
         // RCLCPP_WARN(ros_node_->get_logger(), "Controller updating %s", pair.first.c_str());
@@ -114,12 +121,14 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         auto pos = controllerPtr->GetPositions();
         auto pids = controllerPtr->GetPositionPIDs();
         controllerPtr->Update();
-        if(seconds_since_last_print < print_period) continue;
+        if (seconds_since_last_print < print_period)
+            continue;
         auto fullJointName = robot_name_ + "::" + jointName;
         RCLCPP_INFO(ros_node_->get_logger(), "Updating controller %s with cmd: %f", jointName.c_str(), pids[fullJointName].GetCmd());
     }
 
-    if(seconds_since_last_print >= print_period){
+    if (seconds_since_last_print >= print_period)
+    {
         RCLCPP_INFO(ros_node_->get_logger(), "======================");
         last_print_time_ = current_time;
     }
@@ -148,7 +157,22 @@ void RobotPluginPrivate::CommandSubscriptionCallback(ros2_control_interfaces::ms
     }
 }
 
-
+void RobotPluginPrivate::ResetServiceCallback(
+    const std::shared_ptr<rmw_request_id_t> request_header,
+    const std::shared_ptr<Empty::Request> request,
+    const std::shared_ptr<Empty::Response> response)
+{
+    (void)request_header;
+    (void)request;
+    (void)response;
+    for (auto &pair : joints_map_)
+    {
+        auto jointPtr = pair.second;
+        jointPtr->SetPosition(0, 0.0);
+        jointPtr->SetVelocity(0, 0.0);
+        jointPtr->SetForce(0, 0.0);
+    }
+}
 
 std::vector<std::string> RobotPlugin::GetJoints(const std::string &robotName, rclcpp::Node::SharedPtr request_node)
 {
@@ -229,7 +253,8 @@ std::unordered_map<std::string, gazebo::common::PID> RobotPlugin::GetPidParamete
             continue;
         }
         auto res = resp.get();
-        for(size_t i = 0;i<res->joints.size();i++){
+        for (size_t i = 0; i < res->joints.size(); i++)
+        {
             auto joint = res->joints[i];
             auto gazeboPid = gazebo::common::PID();
             gazeboPid.SetPGain(res->p[i]);
@@ -245,7 +270,8 @@ std::unordered_map<std::string, gazebo::common::PID> RobotPlugin::GetPidParamete
     return {};
 }
 
-void RobotPlugin::SetUpdateRate(sdf::ElementPtr _sdf){
+void RobotPlugin::SetUpdateRate(sdf::ElementPtr _sdf)
+{
     double update_rate = 100.0;
     if (!_sdf->HasElement("update_rate"))
     {
