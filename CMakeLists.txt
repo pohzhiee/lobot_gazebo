@@ -24,6 +24,7 @@ find_package(rclcpp REQUIRED)
 find_package(gazebo_dev REQUIRED)
 find_package(gazebo_ros REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(parameter_server_interfaces REQUIRED)
 find_package(ros2_control_interfaces REQUIRED)
@@ -36,6 +37,7 @@ ament_target_dependencies(
   gazebo_ros
   rclcpp
   std_msgs
+  std_srvs
   parameter_server_interfaces
   ros2_control_interfaces
 )

@@ -172,6 +172,14 @@ void RobotPluginPrivate::ResetServiceCallback(
         jointPtr->SetVelocity(0, 0.0);
         jointPtr->SetForce(0, 0.0);
     }
+
+    for(auto &pair : joint_controllers_map_){
+        auto controller = pair.second;
+        controller->Reset();
+    }
+    for(auto &pair : goal_map_){
+        pair.second = 0;
+    }
 }
 
 std::vector<std::string> RobotPlugin::GetJoints(const std::string &robotName, rclcpp::Node::SharedPtr request_node)

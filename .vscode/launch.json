@@ -5,14 +5,34 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "(gdb) Attach",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "/usr/bin/gzserver",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
             "name": "Launch gzserver",
             "type": "cppdbg",
             "request": "launch",
             "program": "/usr/bin/gzserver",
-            "args": ["/home/pohzhiee/biped_ros2_new/install/lobot_description/share/lobot_description/robots/biped.sdf", "-s", "libgazebo_ros_init.so", "-s", "libgazebo_ros_factory.so", "__log_level:=debug"],
+            "args": ["/home/pohzhiee/biped_ros2/install/lobot_description/share/lobot_description/worlds/world1.sdf", "-s", "libgazebo_ros_init.so", "-s", "libgazebo_ros_factory.so", "__log_level:=debug"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "/opt/ros/dashing/opt/yaml_cpp_vendor/lib:/opt/ros/dashing/opt/rviz_ogre_vendor/lib:/usr/lib/x86_64-linux-gnu/gazebo-9/plugins:/home/pohzhiee/lobot_ros2/install/controller_manager/lib:/home/pohzhiee/lobot_ros2/install/hardware_interface/lib:/home/pohzhiee/lobot_ros2/install/controller_interface/lib:/home/pohzhiee/lobot_ros2/install/ros_controllers/lib:/opt/ros/dashing/lib:/home/pohzhiee/lobot_ros2/install/parameter_server_interfaces/lib:/home/pohzhiee/lobot_ros2/install/controller_parameter_server/lib:/home/pohzhiee/lobot_ros2/install/ros2_control_parameter_server/lib"
+                }
+            ],
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
