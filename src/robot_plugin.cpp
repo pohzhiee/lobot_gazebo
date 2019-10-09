@@ -19,7 +19,14 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
     impl_->model_ = _model;
     impl_->ros_node_ = gazebo_ros::Node::Get(_sdf);
     RCLCPP_INFO(impl_->ros_node_->get_logger(), "Plugin loading...");
+    // Robot name is the name that is obtained from the urdf, used to query the parameter server
+    // Model name is the name within gazebo, set when spawning the robot
+    // These 2 are distinct in the sense that there can be multiple models of the same robot
+    // However all the robots are controlled together, there is currently no support for separate topics for each model (as of v0.3, 09 Oct 2019)
     std::string robotName;
+    std::string modelName;
+    modelName = _model->GetName();
+    RCLCPP_INFO(impl_->ros_node_->get_logger(), "Model name: %s", modelName.c_str());
     // Get the robot_name from the plugin sdf
     if (_sdf->HasElement("robot_name"))
     {
@@ -32,7 +39,7 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
         RCLCPP_FATAL(impl_->ros_node_->get_logger(), "Robot field not populated in sdf");
         return;
     }
-    impl_->robot_name_ = robotName;
+    impl_->model_name_ = modelName;
     // Get the joints from parameter server
     auto request_node = std::make_shared<rclcpp::Node>("robot_plugin_request_node");
     auto joint_names = GetJoints(robotName, request_node);
@@ -52,10 +59,10 @@ void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf)
         controller->AddJoint(joint);
         // Somehow after adding the joint to the controller, to set any pid or target of a joint it takes the robot name into account
         // So the fullJointName accounts for the robot name as well
-        auto fullJointName = impl_->robot_name_ + "::" + joint_name;
-        controller->SetPositionPID(fullJointName, std::move(pid_params_map[joint_name]));
+        auto fullJointName = impl_->model_name_ + "::" + joint_name;
+        controller->SetPositionPID(fullJointName, pid_params_map[joint_name]);
         controller->SetPositionTarget(fullJointName, 0.0);
-        impl_->joint_controllers_map_[joint_name] = std::move(controller);
+        impl_->joint_controllers_map_[joint_name] = controller;
 
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Registering joint %s", joint_name.c_str());
     }
@@ -99,7 +106,7 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
     {
         auto joint_name = pair.first;
         auto goal = pair.second;
-        joint_controllers_map_[joint_name]->SetPositionTarget(robot_name_ + "::" + joint_name, goal);
+        joint_controllers_map_[joint_name]->SetPositionTarget(model_name_ + "::" + joint_name, goal);
     }
 
     // Check period
@@ -123,7 +130,7 @@ void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info)
         controllerPtr->Update();
         if (seconds_since_last_print < print_period)
             continue;
-        auto fullJointName = robot_name_ + "::" + jointName;
+        auto fullJointName = model_name_ + "::" + jointName;
         RCLCPP_INFO(ros_node_->get_logger(), "Updating controller %s with cmd: %f", jointName.c_str(), pids[fullJointName].GetCmd());
     }
 

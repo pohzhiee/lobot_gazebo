@@ -25,7 +25,7 @@ public:
     gazebo_ros::Node::SharedPtr ros_node_;
 
     gazebo::physics::ModelPtr model_;
-    std::string robot_name_;
+    std::string model_name_;
 
     std::unordered_map<std::string, gazebo::physics::JointPtr> joints_map_ = {};
     std::unordered_map<std::string, std::shared_ptr<gazebo::physics::JointController>> joint_controllers_map_ = {};
