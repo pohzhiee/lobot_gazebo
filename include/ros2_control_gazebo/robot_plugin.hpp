@@ -30,6 +30,7 @@ public:
     std::unordered_map<std::string, gazebo::physics::JointPtr> joints_map_ = {};
     std::unordered_map<std::string, std::shared_ptr<gazebo::physics::JointController>> joint_controllers_map_ = {};
     std::unordered_map<std::string, double> goal_map_ = {};
+    std::unordered_map<std::string, double> command_map_ = {};
 
     double update_period_;
     gazebo::common::Time last_update_time_;
