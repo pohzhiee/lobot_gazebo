@@ -13,9 +13,8 @@ namespace gazebo_plugins{
 
     void GymTrainingPlugin::Load(gazebo::physics::WorldPtr _world, sdf::ElementPtr _sdf) {
         ros_node_ = gazebo_ros::Node::Get(_sdf);
-        std::cerr << "LOAD!!!";
         world_ptr_ = _world;
-        RCLCPP_WARN_ONCE(ros_node_->get_logger(), "GymTrainingPlugin loaded!!!!");
+        RCLCPP_INFO_ONCE(ros_node_->get_logger(), "GymTrainingPlugin loaded");
         auto request_node = std::make_shared<rclcpp::Node>("robot_joint_state_plugin_request_node");
         auto update_rate = getUpdateRate(request_node);
 
@@ -27,7 +26,7 @@ namespace gazebo_plugins{
         {
             update_period_ = 0;
         }
-        RCLCPP_WARN_ONCE(ros_node_->get_logger(), "Update period set to: %lu", update_period_);
+        RCLCPP_INFO(ros_node_->get_logger(), "Update period set to: %lu ns", update_period_);
         update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
                 std::bind(&GymTrainingPlugin::OnUpdate, this, std::placeholders::_1));
     }
@@ -51,7 +50,7 @@ namespace gazebo_plugins{
 
             auto req = std::make_shared<parameter_server_interfaces::srv::GetGymUpdateRate::Request>();
             auto resp = client1->async_send_request(req);
-            RCLCPP_INFO(ros_node_->get_logger(), "Getting joints...");
+            RCLCPP_INFO(ros_node_->get_logger(), "Getting gym update rate...");
             auto spin_status = rclcpp::spin_until_future_complete(request_node, resp, 1s);
             if (spin_status != rclcpp::executor::FutureReturnCode::SUCCESS)
             {
