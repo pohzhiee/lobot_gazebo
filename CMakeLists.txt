@@ -58,6 +58,7 @@ ament_target_dependencies(
         gazebo_ros
         rclcpp
         parameter_server_interfaces
+        ros2_control_interfaces
 )
 
 

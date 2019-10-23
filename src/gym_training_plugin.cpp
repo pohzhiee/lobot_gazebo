@@ -3,17 +3,23 @@
 //
 
 #include <chrono>
+#include <functional>
 
 #include "ros2_control_gazebo/gym_training_plugin.hpp"
 #include "parameter_server_interfaces/srv/get_gym_update_rate.hpp"
 
 namespace gazebo_plugins{
     using namespace std::chrono_literals;
+    using std::placeholders::_1;
+    using std::placeholders::_2;
+    using std::placeholders::_3;
     GymTrainingPlugin::GymTrainingPlugin()= default;
 
     void GymTrainingPlugin::Load(gazebo::physics::WorldPtr _world, sdf::ElementPtr _sdf) {
         ros_node_ = gazebo_ros::Node::Get(_sdf);
         world_ptr_ = _world;
+        auto srvCallback = std::bind(&GymTrainingPlugin::handle_GetSimTime, this, _1, _2, _3);
+        get_sim_time_srv_ = ros_node_->create_service<GetSimTime>("/get_current_sim_time", srvCallback);
         RCLCPP_INFO_ONCE(ros_node_->get_logger(), "GymTrainingPlugin loaded");
         auto request_node = std::make_shared<rclcpp::Node>("robot_joint_state_plugin_request_node");
         auto update_rate = getUpdateRate(request_node);
@@ -90,5 +96,15 @@ namespace gazebo_plugins{
         last_update_time_ = current_time;
 
         world_ptr_->SetPaused(true);
+    }
+
+    void GymTrainingPlugin::handle_GetSimTime(const std::shared_ptr<rmw_request_id_t> request_header,
+                           const std::shared_ptr<GetSimTime::Request> request,
+                           const std::shared_ptr<GetSimTime::Response> response){
+        (void) request_header;
+        (void) request;
+        auto time = world_ptr_->SimTime();
+        response->sec = time.sec;
+        response->nanosec = time.nsec;
     }
 }
