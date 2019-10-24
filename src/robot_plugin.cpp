@@ -4,8 +4,10 @@
 #include <functional>
 #include <string>
 #include <chrono>
+#include <algorithm>
 
 namespace gazebo_plugins {
+    constexpr double back_emf_constant = 0.8;
     using namespace std::chrono_literals;
 
     RobotPlugin::RobotPlugin()
@@ -30,42 +32,43 @@ namespace gazebo_plugins {
             robotName = robot_elem->Get<std::string>();
             RCLCPP_INFO(impl_->ros_node_->get_logger(), "Robot name from sdf: %s", robotName.c_str());
         } else {
-            RCLCPP_FATAL(impl_->ros_node_->get_logger(), "Robot field not populated in sdf");
+            RCLCPP_FATAL(impl_->ros_node_->get_logger(),
+                         "Robot name field not populated in sdf. Please set element robot_name");
             return;
         }
-        impl_->model_name_ = modelName;
         // Get the joints from parameter server
         auto request_node = std::make_shared<rclcpp::Node>("robot_plugin_request_node");
         auto joint_names = GetJoints(robotName, request_node);
         auto pid_params_map = GetPidParameters(robotName, request_node);
 
-        // Register the joints and the corresponding controllers
+        // Register the joints, make sure the relevant vectors are empty first
+        impl_->pid_vec_.clear();
+        // Some joints from the parameter server may not exist in the robot
+        uint8_t index = 0;
         for (auto &joint_name : joint_names) {
             auto joint = _model->GetJoint(joint_name);
             if (!joint) {
-                RCLCPP_ERROR(impl_->ros_node_->get_logger(), "Joint %s does not exist!", joint_name.c_str());
+                RCLCPP_ERROR(impl_->ros_node_->get_logger(), "Joint %s does not exist! Ignoring...",
+                             joint_name.c_str());
                 continue;
             }
-            impl_->joints_map_[joint_name] = joint;
-            auto controller = std::make_shared<gazebo::physics::JointController>(_model);
-            controller->AddJoint(joint);
-            // Somehow after adding the joint to the controller, to set any pid or target of a joint it takes the robot name into account
-            // So the fullJointName accounts for the robot name as well
-            auto fullJointName = impl_->model_name_ + "::" + joint_name;
-            controller->SetPositionPID(fullJointName, pid_params_map[joint_name]);
-            controller->SetPositionTarget(fullJointName, 0.0);
-            impl_->joint_controllers_map_[joint_name] = controller;
 
-            RCLCPP_INFO(impl_->ros_node_->get_logger(), "Registering joint %s", joint_name.c_str());
+            impl_->joint_index_map_[joint_name] = index;
+            RCLCPP_INFO(impl_->ros_node_->get_logger(), "Registering joint %s with id %lu", joint_name.c_str(), index);
+            auto pid = std::make_unique<gazebo::common::PID>(pid_params_map[joint_name]);
+            impl_->pid_vec_.emplace_back(std::move(pid));
+            ++index;
         }
+        // index+1 gives the total number of registered joints, so we can initialise our vectors appropriately
+        impl_->goal_vec_.resize(index + 1);
+        impl_->command_vec_.resize(index + 1);
 
-        // Create the joint subscription
+        // Create the joint control subscription
         impl_->cmd_subscription_ = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointControl>(
                 "/" + robotName + "/control", rclcpp::SensorDataQoS(),
                 std::bind(&RobotPluginPrivate::CommandSubscriptionCallback, impl_, std::placeholders::_1));
 
         SetUpdateRate(_sdf);
-
         impl_->last_update_time_ = _model->GetWorld()->SimTime();
 
         //Create reset service
@@ -85,72 +88,52 @@ namespace gazebo_plugins {
     void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
 
         gazebo::common::Time current_time = _info.simTime;
+        std::vector<double> local_goal_vec;
+        {
+            std::lock_guard<std::mutex> lock(goal_lock_);
+            local_goal_vec = goal_vec_;
+        }
 
         // If the world is reset, for example
         if (current_time < last_update_time_) {
             RCLCPP_INFO(ros_node_->get_logger(), "Negative sim time difference detected.");
             last_update_time_ = current_time;
-        }
-        // Update goal
-        for (auto &pair : goal_map_) {
-            auto joint_name = pair.first;
-            auto goal = pair.second;
-            joint_controllers_map_[joint_name]->SetPositionTarget(model_name_ + "::" + joint_name, goal);
+            return;
         }
 
         // Check period
-        double seconds_since_last_update = (current_time - last_update_time_).Double();
-        double seconds_since_last_print = (current_time - last_print_time_).Double();
+        auto time_since_last_update = current_time - last_update_time_;
+        double seconds_since_last_update = time_since_last_update.Double();
 
-        // Set the force to the previous controller command, otherwise it will default to 0
         if (seconds_since_last_update < update_period_) {
-            for(auto &cmd: command_map_){
-                auto joint_name = cmd.first;
-                auto command = cmd.second;
-                auto fullJointName = model_name_ + "::" + joint_name;
-                auto joint = model_->GetJoint(joint_name);
-                if(joint != nullptr){
-                    joint->SetForce(0, command);
-                }
-                else{
-                    RCLCPP_WARN(ros_node_->get_logger(), "Joint [%s] not found", fullJointName.c_str());
-                }
-            }
+            // Set the force to the previous controller command, otherwise it will default to 0
+            UpdateForceFromCmdBuffer();
             return;
         }
-        constexpr auto print_period = 6.0;
-        for (auto &pair : joint_controllers_map_) {
-            auto jointName = pair.first;
-            auto &controllerPtr = pair.second;
-            // RCLCPP_WARN(ros_node_->get_logger(), "Controller updating %s", pair.first.c_str());
-            auto pos_goal_map = controllerPtr->GetPositions();
-            auto pids = controllerPtr->GetPositionPIDs();
-            auto goal = (*(pos_goal_map.begin())).second;
-            auto joint = model_->GetJoint(jointName);
-            auto pos = joint->Position(0);
-            auto fullJointName = model_name_ + "::" + jointName;
-            auto cmd = pids[fullJointName].GetCmd();
-            command_map_[jointName] = cmd;
-            RCLCPP_DEBUG(ros_node_->get_logger(), "[B][%s][%d][%09d] Pos: %f \tGoal: %f \tCommand: %f",
-                    jointName.c_str(), current_time.sec, current_time.nsec, pos, goal, cmd);
-            controllerPtr->Update();
-            if (seconds_since_last_print < print_period)
-                continue;
-            RCLCPP_INFO(ros_node_->get_logger(), "Updating controller %s with cmd: %f", jointName.c_str(),
-                        cmd);
-        }
 
-        if (seconds_since_last_print >= print_period) {
-            RCLCPP_INFO(ros_node_->get_logger(), "======================");
-            last_print_time_ = current_time;
+        // Update the PID command if PID update period is reached for each joint
+        for (auto &pair : joint_index_map_) {
+            auto &joint_name = pair.first;
+            auto joint_index = pair.second;
+            auto &pid = pid_vec_[joint_index];
+            auto joint = model_->GetJoint(joint_name);
+            auto current_pos = joint->Position(0);
+            auto error = current_pos - local_goal_vec[joint_index];
+            double pid_output_command = pid->Update(error, time_since_last_update);
+            command_vec_[joint_index] = pid_output_command;
+
         }
+        UpdateForceFromCmdBuffer();
+
         // Update time
         last_update_time_ = current_time;
     }
 
-    void RobotPluginPrivate::CommandSubscriptionCallback(ros2_control_interfaces::msg::JointControl::UniquePtr msg) {
+    void RobotPluginPrivate::CommandSubscriptionCallback(
+            ros2_control_interfaces::msg::JointControl::UniquePtr msg) {
         // Uses map to write to buffer
         {
+            std::lock_guard<std::mutex> lock(goal_lock_);
             auto msgNameSize = msg->joints.size();
             auto msgCmdSize = msg->goals.size();
             if (msgNameSize != msgCmdSize) {
@@ -160,8 +143,14 @@ namespace gazebo_plugins {
             for (size_t i = 0; i < msgNameSize; i++) {
                 auto goal = msg->goals[i];
                 auto name = msg->joints[i];
-                auto jointPtr = joints_map_[name];
-                goal_map_[name] = goal;
+                auto index_iter = joint_index_map_.find(name);
+                if (index_iter == joint_index_map_.end()) {
+                    RCLCPP_WARN_ONCE(ros_node_->get_logger(), "Message joint [%s] not registered in the plugin",
+                                     name.c_str());
+                    continue;
+                }
+                uint8_t index = (*index_iter).second;
+                goal_vec_[index] = goal;
             }
         }
     }
@@ -173,19 +162,68 @@ namespace gazebo_plugins {
         (void) request_header;
         (void) request;
         (void) response;
-        for (auto &pair : joints_map_) {
-            auto jointPtr = pair.second;
-            jointPtr->SetPosition(0, 0.0);
-            jointPtr->SetVelocity(0, 0.0);
-            jointPtr->SetForce(0, 0.0);
+        for (const auto &joint : joints_vec_) {
+            joint->SetPosition(0, 0.0);
+            joint->SetVelocity(0, 0.0);
+            joint->SetForce(0, 0.0);
         }
+        for (const auto &pid : pid_vec_) {
+            pid->Reset();
+        }
+        for (auto &goal : goal_vec_) {
+            goal = 0;
+        }
+    }
 
-        for (auto &pair : joint_controllers_map_) {
-            auto controller = pair.second;
-            controller->Reset();
-        }
-        for (auto &pair : goal_map_) {
-            pair.second = 0;
+    void RobotPluginPrivate::UpdateForceFromCmdBuffer() {
+        for (auto &pair : joint_index_map_) {
+            auto &joint_name = pair.first;
+            auto joint_index = pair.second;
+            auto command = command_vec_[joint_index];
+            auto joint = model_->GetJoint(joint_name);
+            if (joint != nullptr) {
+                // It seems like the GetVelocity method is subjected to a very high rounding error
+                // It rounds once during the current_pos - previous_pos
+                // It rounds another time during the division by time step
+                // The smaller the time step, the larger the floating point error is
+                // That is why the velocity seemingly never goes to a very small value
+                auto current_vel = joint->GetVelocity(0);
+
+                auto max_torque = joint->GetEffortLimit(0);
+                auto clamped_output = std::clamp(command, -max_torque, max_torque);
+                auto desired_output_torque = clamped_output - back_emf_constant * current_vel;
+                auto current_force = joint->GetForce(0);
+                // Gazebo is strange, even when you get a positive value for force, if you didn't call set force it wouldn't actually apply the force
+                // However, when you call SetForce(), it merely adds your passed force value to the existing value and apply that force instead
+                // Therefore, we need to reduce the entire amount of force obtained by GetForce(), such that SetForce() applies the force that we want
+                // instead of adding on to the old one
+                // This is separated into two steps because there is a clamping mechanism in set force, so we can't combine the values and set
+                joint->SetForce(0, -current_force);
+                joint->SetForce(0, desired_output_torque);
+                //Debugging stuff
+/*
+                if (debug && joint_name == "arm_1_joint") {
+                    auto current_pos = joint->Position(0);
+                    auto force = joint->GetForce(0);
+                    auto error = current_pos - local_goal_vec[joint_index];
+                    const std::unique_ptr<gazebo::common::PID> &pid_ptr = pid_vec_[joint_index];
+                    double pError, iError, dError;
+                    pid_ptr->GetErrors(pError, iError, dError);
+                    auto dTerm = pid_ptr->GetDGain() * dError;
+                    auto iTerm = pid_ptr->GetIGain() * iError;
+                    auto pTerm = pid_ptr->GetPGain() * pError;
+                    RCLCPP_WARN(ros_node_->get_logger(),
+                                "[%d][%09d] Command: %f\t Set Force: %f\t Desired Force: %f\t Ori Vel: %f\t Error: %f",
+                                current_time.sec, current_time.nsec, command, force, desired_output_torque, current_vel, error);
+                    RCLCPP_WARN(ros_node_->get_logger(),
+                                "[%d][%09d] Command: %f\t P: %f\t I: %f\t D: %f",
+                                current_time.sec, current_time.nsec, command, pTerm, iTerm, dTerm);
+                }*/
+
+            }
+            else {
+                RCLCPP_WARN(ros_node_->get_logger(), "Joint [%s] not found", joint_name.c_str());
+            }
         }
     }
 

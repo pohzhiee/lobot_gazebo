@@ -14,6 +14,7 @@
 
 #include <unordered_map>
 #include <memory>
+#include <mutex>
 
 namespace gazebo_plugins
 {
@@ -25,17 +26,16 @@ public:
     gazebo_ros::Node::SharedPtr ros_node_;
 
     gazebo::physics::ModelPtr model_;
-    std::string model_name_;
 
-    std::unordered_map<std::string, gazebo::physics::JointPtr> joints_map_ = {};
-    std::unordered_map<std::string, std::shared_ptr<gazebo::physics::JointController>> joint_controllers_map_ = {};
-    std::unordered_map<std::string, double> goal_map_ = {};
-    std::unordered_map<std::string, double> command_map_ = {};
-
+    gazebo::event::ConnectionPtr update_connection_;
     double update_period_;
     gazebo::common::Time last_update_time_;
-    gazebo::common::Time last_print_time_;
-    gazebo::event::ConnectionPtr update_connection_;
+
+    std::unordered_map<std::string, uint8_t> joint_index_map_ = {};
+    std::vector<gazebo::physics::JointPtr> joints_vec_ = {};
+    std::vector<std::unique_ptr<gazebo::common::PID>> pid_vec_ = {};
+    std::vector<double> goal_vec_ = {};
+    std::vector<double> command_vec_ = {};
 
     rclcpp::Subscription<ros2_control_interfaces::msg::JointControl>::SharedPtr cmd_subscription_;
     rclcpp::Service<Empty>::SharedPtr reset_service_;
@@ -44,6 +44,10 @@ public:
         const std::shared_ptr<rmw_request_id_t> request_header,
         const std::shared_ptr<Empty::Request> request,
         const std::shared_ptr<Empty::Response> response);
+private:
+    void UpdateForceFromCmdBuffer();
+    std::mutex goal_lock_;
+
 };
 
 class RobotPlugin : public gazebo::ModelPlugin
