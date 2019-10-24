@@ -312,7 +312,7 @@ namespace gazebo_plugins {
                 gazeboPid.SetDGain(res->d[i]);
                 gazeboPid.SetIMin(res->i_min[i]);
                 gazeboPid.SetIMax(res->i_max[i]);
-                map[joint] = std::move(gazeboPid);
+                map[joint] = gazeboPid;
             }
             return map;
         }
