@@ -133,6 +133,16 @@ namespace gazebo_plugins {
             ros2_control_interfaces::msg::JointControl::UniquePtr msg) {
         // Uses map to write to buffer
         {
+            auto zero_time = rclcpp::Time(0,0,RCL_ROS_TIME);
+            auto msg_time = rclcpp::Time(msg->header.stamp, RCL_ROS_TIME);
+            auto last_update_time = rclcpp::Time(last_update_time_.sec, last_update_time_.nsec, RCL_ROS_TIME);
+            if(msg_time > zero_time){
+                if(msg_time < last_update_time){
+                    RCLCPP_WARN(ros_node_->get_logger(), "Outdated control message, ignoring...");
+                    return;
+                }
+            }
+
             std::lock_guard<std::mutex> lock(goal_lock_);
             auto msgNameSize = msg->joints.size();
             auto msgCmdSize = msg->goals.size();
@@ -173,6 +183,7 @@ namespace gazebo_plugins {
         for (auto &goal : goal_vec_) {
             goal = 0;
         }
+        last_update_time_ = gazebo::common::Time(0,0);
     }
 
     void RobotPluginPrivate::UpdateForceFromCmdBuffer() {
