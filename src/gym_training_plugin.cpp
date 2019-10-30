@@ -16,7 +16,9 @@ namespace gazebo_plugins{
     GymTrainingPlugin::GymTrainingPlugin()= default;
 
     void GymTrainingPlugin::Load(gazebo::physics::WorldPtr _world, sdf::ElementPtr _sdf) {
-        ros_node_ = gazebo_ros::Node::Get(_sdf);
+        auto nodeOptions = rclcpp::NodeOptions();
+        nodeOptions.start_parameter_services(false);
+        ros_node_ = gazebo_ros::Node::CreateWithArgs(_sdf->Get<std::string>("name"), nodeOptions);
         world_ptr_ = _world;
         auto srvCallback = std::bind(&GymTrainingPlugin::handle_GetSimTime, this, _1, _2, _3);
         get_sim_time_srv_ = ros_node_->create_service<GetSimTime>("/get_current_sim_time", srvCallback);

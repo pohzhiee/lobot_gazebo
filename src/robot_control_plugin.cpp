@@ -1,4 +1,4 @@
-#include "ros2_control_gazebo/robot_plugin.hpp"
+#include "ros2_control_gazebo/robot_control_plugin.hpp"
 #include "parameter_server_interfaces/srv/get_all_pid.hpp"
 
 #include <functional>
@@ -10,13 +10,15 @@ namespace gazebo_plugins {
     constexpr double back_emf_constant = 0.8;
     using namespace std::chrono_literals;
 
-    RobotPlugin::RobotPlugin()
-            : impl_(std::make_unique<RobotPluginPrivate>()) {
+    RobotControlPlugin::RobotControlPlugin()
+            : impl_(std::make_shared<RobotControlPluginPrivate>()) {
     }
 
-    void RobotPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf) {
+    void RobotControlPlugin::Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf) {
         impl_->model_ = _model;
-        impl_->ros_node_ = gazebo_ros::Node::Get(_sdf);
+        auto nodeOptions = rclcpp::NodeOptions();
+        nodeOptions.start_parameter_services(false);
+        impl_->ros_node_ = gazebo_ros::Node::CreateWithArgs(_sdf->Get<std::string>("name"), nodeOptions);
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Plugin loading...");
         // Robot name is the name that is obtained from the urdf, used to query the parameter server
         // Model name is the name within gazebo, set when spawning the robot
@@ -66,26 +68,26 @@ namespace gazebo_plugins {
         // Create the joint control subscription
         impl_->cmd_subscription_ = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointControl>(
                 "/" + robotName + "/control", rclcpp::SensorDataQoS(),
-                std::bind(&RobotPluginPrivate::CommandSubscriptionCallback, impl_, std::placeholders::_1));
+                std::bind(&RobotControlPluginPrivate::CommandSubscriptionCallback, impl_, std::placeholders::_1));
 
         SetUpdateRate(_sdf);
         impl_->last_update_time_ = _model->GetWorld()->SimTime();
 
         //Create reset service
-        auto reset_cb_fp = std::bind(&RobotPluginPrivate::ResetServiceCallback, impl_, std::placeholders::_1,
+        auto reset_cb_fp = std::bind(&RobotControlPluginPrivate::ResetServiceCallback, impl_, std::placeholders::_1,
                                      std::placeholders::_2, std::placeholders::_3);
         impl_->reset_service_ =
                 impl_->ros_node_->create_service<Empty>("/" + robotName + "/reset", reset_cb_fp);
 
         impl_->update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
-                std::bind(&RobotPluginPrivate::OnUpdate, impl_.get(), std::placeholders::_1));
+                std::bind(&RobotControlPluginPrivate::OnUpdate, impl_.get(), std::placeholders::_1));
     } // namespace gazebo_plugins
 
-    void RobotPlugin::Reset() {
+    void RobotControlPlugin::Reset() {
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Simulation reset called");
     }
 
-    void RobotPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
+    void RobotControlPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
 
         gazebo::common::Time current_time = _info.simTime;
         std::vector<double> local_goal_vec;
@@ -129,7 +131,7 @@ namespace gazebo_plugins {
         last_update_time_ = current_time;
     }
 
-    void RobotPluginPrivate::CommandSubscriptionCallback(
+    void RobotControlPluginPrivate::CommandSubscriptionCallback(
             ros2_control_interfaces::msg::JointControl::UniquePtr msg) {
         // Uses map to write to buffer
         {
@@ -165,7 +167,7 @@ namespace gazebo_plugins {
         }
     }
 
-    void RobotPluginPrivate::ResetServiceCallback(
+    void RobotControlPluginPrivate::ResetServiceCallback(
             const std::shared_ptr<rmw_request_id_t> request_header,
             const std::shared_ptr<Empty::Request> request,
             const std::shared_ptr<Empty::Response> response) {
@@ -186,7 +188,7 @@ namespace gazebo_plugins {
         last_update_time_ = gazebo::common::Time(0,0);
     }
 
-    void RobotPluginPrivate::UpdateForceFromCmdBuffer() {
+    void RobotControlPluginPrivate::UpdateForceFromCmdBuffer() {
         for (auto &pair : joint_index_map_) {
             auto &joint_name = pair.first;
             auto joint_index = pair.second;
@@ -239,7 +241,7 @@ namespace gazebo_plugins {
     }
 
     std::vector<std::string>
-    RobotPlugin::GetJoints(const std::string &robotName, rclcpp::Node::SharedPtr request_node) {
+    RobotControlPlugin::GetJoints(const std::string &robotName, rclcpp::Node::SharedPtr request_node) {
         auto client1 = request_node->create_client<parameter_server_interfaces::srv::GetAllJoints>(
                 "/GetAllControlJoints");
         using namespace std::chrono_literals;
@@ -278,7 +280,7 @@ namespace gazebo_plugins {
     }
 
     std::unordered_map<std::string, gazebo::common::PID>
-    RobotPlugin::GetPidParameters(const std::string &robotName, rclcpp::Node::SharedPtr request_node) {
+    RobotControlPlugin::GetPidParameters(const std::string &robotName, rclcpp::Node::SharedPtr request_node) {
         using GetAllPid = parameter_server_interfaces::srv::GetAllPid;
 
         auto map = std::unordered_map<std::string, gazebo::common::PID>();
@@ -332,7 +334,7 @@ namespace gazebo_plugins {
         return {};
     }
 
-    void RobotPlugin::SetUpdateRate(sdf::ElementPtr _sdf) {
+    void RobotControlPlugin::SetUpdateRate(sdf::ElementPtr _sdf) {
         double update_rate = 100.0;
         if (!_sdf->HasElement("update_rate")) {
             RCLCPP_INFO(impl_->ros_node_->get_logger(), "Missing <update_rate>, defaults to %f",

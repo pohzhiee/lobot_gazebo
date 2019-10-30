@@ -19,7 +19,7 @@
 namespace gazebo_plugins
 {
 using Empty = std_srvs::srv::Empty;
-class RobotPluginPrivate
+class RobotControlPluginPrivate
 {
 public:
     void OnUpdate(const gazebo::common::UpdateInfo &_info);
@@ -41,26 +41,26 @@ public:
     rclcpp::Service<Empty>::SharedPtr reset_service_;
     void CommandSubscriptionCallback(ros2_control_interfaces::msg::JointControl::UniquePtr msg);
     void ResetServiceCallback(
-        const std::shared_ptr<rmw_request_id_t> request_header,
-        const std::shared_ptr<Empty::Request> request,
-        const std::shared_ptr<Empty::Response> response);
+        std::shared_ptr<rmw_request_id_t> request_header,
+        std::shared_ptr<Empty::Request> request,
+        std::shared_ptr<Empty::Response> response);
 private:
     void UpdateForceFromCmdBuffer();
     std::mutex goal_lock_;
 
 };
 
-class RobotPlugin : public gazebo::ModelPlugin
+class RobotControlPlugin : public gazebo::ModelPlugin
 {
 public:
-    RobotPlugin();
+    RobotControlPlugin();
 
 public:
     void Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf) override;
     void Reset() override;
 
 private:
-    std::shared_ptr<RobotPluginPrivate> impl_;
+    std::shared_ptr<RobotControlPluginPrivate> impl_;
     // Helper functions
     std::vector<std::string> GetJoints(const std::string &robotName, rclcpp::Node::SharedPtr request_node);
     std::unordered_map<std::string, gazebo::common::PID> GetPidParameters(const std::string &robot_name, rclcpp::Node::SharedPtr request_node);
@@ -68,6 +68,6 @@ private:
 };
 
 // Tell Gazebo about this plugin, so that Gazebo can call Load on this plugin.
-GZ_REGISTER_MODEL_PLUGIN(RobotPlugin)
+GZ_REGISTER_MODEL_PLUGIN(RobotControlPlugin)
 } // namespace gazebo_plugins
 #endif

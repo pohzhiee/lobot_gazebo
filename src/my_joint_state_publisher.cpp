@@ -66,7 +66,7 @@ public:
     std::vector<gazebo::physics::JointPtr> joints_;
 
     /// Period in seconds
-    double update_period_;
+    double update_period_ {};
 
     /// Keep last time an update was published
     gazebo::common::Time last_update_time_;
@@ -81,13 +81,14 @@ MyJointStatePublisher::MyJointStatePublisher()
 }
 
 MyJointStatePublisher::~MyJointStatePublisher()
-{
-}
+= default;
 
 void MyJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
 {
     // ROS node
-    impl_->ros_node_ = gazebo_ros::Node::Get(sdf);
+    auto nodeOptions = rclcpp::NodeOptions();
+    nodeOptions.start_parameter_services(false);
+    impl_->ros_node_ = gazebo_ros::Node::CreateWithArgs(sdf->Get<std::string>("name"), nodeOptions);
 
     auto request_node = std::make_shared<rclcpp::Node>("robot_joint_state_plugin_request_node");
     auto client1 = request_node->create_client<parameter_server_interfaces::srv::GetAllJoints>("/GetAllControlJoints");
@@ -217,7 +218,7 @@ void MyJointStatePublisherPrivate::OnUpdate(const gazebo::common::UpdateInfo &in
     joint_state.position.resize(joints_.size());
     joint_state.velocity.resize(joints_.size());
 
-    for (unsigned int i = 0; i < joints_.size(); ++i)
+    for (unsigned long i = 0; i < joints_.size(); ++i)
     {
         auto joint = joints_[i];
         double velocity = joint->GetVelocity(0);
