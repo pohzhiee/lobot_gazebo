@@ -36,6 +36,7 @@ namespace gazebo_plugins {
         ~RobotContactPlugin() override = default;
 
         void Load(gazebo::physics::ModelPtr _model, sdf::ElementPtr _sdf) override;
+        void Reset() override;
     private:
         std::shared_ptr<RobotContactPluginPrivate> impl_;
 

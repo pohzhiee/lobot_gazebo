@@ -5,7 +5,6 @@
 #include <gazebo/physics/physics.hh>
 #include <gazebo_ros/node.hpp>
 #include <std_msgs/msg/float64.hpp>
-#include <std_srvs/srv/empty.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 #include <parameter_server_interfaces/srv/get_all_joints.hpp>
@@ -18,7 +17,6 @@
 
 namespace gazebo_plugins
 {
-using Empty = std_srvs::srv::Empty;
 class RobotControlPluginPrivate
 {
 public:
@@ -38,12 +36,8 @@ public:
     std::vector<double> command_vec_ = {};
 
     rclcpp::Subscription<ros2_control_interfaces::msg::JointControl>::SharedPtr cmd_subscription_;
-    rclcpp::Service<Empty>::SharedPtr reset_service_;
     void CommandSubscriptionCallback(ros2_control_interfaces::msg::JointControl::UniquePtr msg);
-    void ResetServiceCallback(
-        std::shared_ptr<rmw_request_id_t> request_header,
-        std::shared_ptr<Empty::Request> request,
-        std::shared_ptr<Empty::Response> response);
+    void Reset();
 private:
     void UpdateForceFromCmdBuffer();
     std::mutex goal_lock_;

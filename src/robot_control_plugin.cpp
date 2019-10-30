@@ -73,18 +73,13 @@ namespace gazebo_plugins {
         SetUpdateRate(_sdf);
         impl_->last_update_time_ = _model->GetWorld()->SimTime();
 
-        //Create reset service
-        auto reset_cb_fp = std::bind(&RobotControlPluginPrivate::ResetServiceCallback, impl_, std::placeholders::_1,
-                                     std::placeholders::_2, std::placeholders::_3);
-        impl_->reset_service_ =
-                impl_->ros_node_->create_service<Empty>("/" + robotName + "/reset", reset_cb_fp);
-
         impl_->update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
                 std::bind(&RobotControlPluginPrivate::OnUpdate, impl_.get(), std::placeholders::_1));
     } // namespace gazebo_plugins
 
     void RobotControlPlugin::Reset() {
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Simulation reset called");
+        impl_->Reset();
     }
 
     void RobotControlPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
@@ -167,13 +162,7 @@ namespace gazebo_plugins {
         }
     }
 
-    void RobotControlPluginPrivate::ResetServiceCallback(
-            const std::shared_ptr<rmw_request_id_t> request_header,
-            const std::shared_ptr<Empty::Request> request,
-            const std::shared_ptr<Empty::Response> response) {
-        (void) request_header;
-        (void) request;
-        (void) response;
+    void RobotControlPluginPrivate::Reset() {
         for (const auto &joint : joints_vec_) {
             joint->SetPosition(0, 0.0);
             joint->SetVelocity(0, 0.0);

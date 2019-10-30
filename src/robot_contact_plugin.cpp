@@ -47,11 +47,15 @@ namespace gazebo_plugins {
         impl_->contact_manager_ = contact_manager;
     }
 
+    void RobotContactPlugin::Reset() {
+        impl_->contact_manager_->Clear();
+        impl_->contact_manager_->ResetCount();
+    }
+
     void RobotContactPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
 
         auto time = _info.simTime;
         auto contact_count = contact_manager_->GetContactCount();
-//        RCLCPP_WARN(ros_node_->get_logger(), "[%d][%d]Number of contacts: %d", time.sec, time.nsec, contact_count);
         if (contact_count == 0)
             return;
 
