@@ -54,7 +54,7 @@ namespace gazebo_plugins {
 
     void RobotContactPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
 
-        auto time = _info.simTime;
+        const gazebo::common::Time &time = _info.simTime;
         auto contact_count = contact_manager_->GetContactCount();
         if (contact_count == 0)
             return;

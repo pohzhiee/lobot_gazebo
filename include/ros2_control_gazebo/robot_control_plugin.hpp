@@ -21,7 +21,8 @@ class RobotControlPluginPrivate
 {
 public:
     void OnUpdate(const gazebo::common::UpdateInfo &_info);
-    gazebo_ros::Node::SharedPtr ros_node_;
+    rclcpp::Node::SharedPtr ros_node_;
+    rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
 
     gazebo::physics::ModelPtr model_;
 
@@ -29,6 +30,13 @@ public:
     double update_period_;
     gazebo::common::Time last_update_time_;
 
+/** 
+ * The joint index map is because I needed a safe way to guarantee that I am accessing what I am supposed to,
+ * regardless of the order of joints being sent in during runtime
+ * Instead of having a hash table for every single mapping, which performs a hash function every lookup,
+ * It is made more efficient by only hashing once and then getting the index, and then using the index to 
+ * perform "unsafe" lookup of the vector elements
+ */
     std::unordered_map<std::string, uint8_t> joint_index_map_ = {};
     std::vector<gazebo::physics::JointPtr> joints_vec_ = {};
     std::vector<std::unique_ptr<gazebo::common::PID>> pid_vec_ = {};

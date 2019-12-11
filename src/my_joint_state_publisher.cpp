@@ -193,7 +193,7 @@ void MyJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPt
 
 void MyJointStatePublisherPrivate::OnUpdate(const gazebo::common::UpdateInfo &info)
 {
-    gazebo::common::Time current_time = info.simTime;
+    const gazebo::common::Time &current_time = info.simTime;
 
     // If the world is reset, for example
     if (current_time < last_update_time_)
