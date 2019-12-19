@@ -22,7 +22,6 @@ class RobotControlPluginPrivate
 public:
     void OnUpdate(const gazebo::common::UpdateInfo &_info);
     rclcpp::Node::SharedPtr ros_node_;
-    rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
 
     gazebo::physics::ModelPtr model_;
 

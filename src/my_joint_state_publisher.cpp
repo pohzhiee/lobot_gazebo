@@ -183,8 +183,12 @@ void MyJointStatePublisher::Load(gazebo::physics::ModelPtr model, sdf::ElementPt
     impl_->last_update_time_ = model->GetWorld()->SimTime();
 
     // Joint state publisher
+    rclcpp::QoS qos_profile =
+            rclcpp::QoS(20)
+            .reliable()
+            .lifespan(rmw_time_t{0,50000000});
     impl_->joint_state_pub_ = impl_->ros_node_->create_publisher<sensor_msgs::msg::JointState>(
-        "joint_states", 1000);
+        "joint_states", qos_profile);
 
     // Callback on every iteration
     impl_->update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(

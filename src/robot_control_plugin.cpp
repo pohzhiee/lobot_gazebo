@@ -18,11 +18,7 @@ namespace gazebo_plugins {
         impl_->model_ = _model;
         auto nodeOptions = rclcpp::NodeOptions();
         nodeOptions.start_parameter_services(false);
-        impl_->ros_node_ = std::make_shared<rclcpp::Node>(_sdf->Get<std::string>("name"), nodeOptions);
-        // Create our own executor because there is no way to access the one by gazebo ros
-        // Also we need to run spin_some on each iteration to make sure as little control message goes unused as possible
-        impl_->executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
-        impl_->executor_->add_node(impl_->ros_node_);
+        impl_->ros_node_ = gazebo_ros::Node::CreateWithArgs(_sdf->Get<std::string>("name"), nodeOptions);
 
         RCLCPP_INFO(impl_->ros_node_->get_logger(), "Plugin loading...");
         // Robot name is the name that is obtained from the urdf, used to query the parameter server
@@ -66,8 +62,9 @@ namespace gazebo_plugins {
         impl_->command_vec_.resize(index + 1);
 
         // Create the joint control subscription
+        auto qos_profile = rclcpp::QoS(20).reliable();
         impl_->cmd_subscription_ = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointControl>(
-                "/" + robotName + "/control", rclcpp::SensorDataQoS(),
+                "/" + robotName + "/control", qos_profile,
                 std::bind(&RobotControlPluginPrivate::CommandSubscriptionCallback, impl_, std::placeholders::_1));
 
         SetUpdateRate(_sdf);
@@ -78,14 +75,13 @@ namespace gazebo_plugins {
     }
 
     void RobotControlPlugin::Reset() {
-        RCLCPP_INFO(impl_->ros_node_->get_logger(), "Simulation reset called");
+//        RCLCPP_INFO(impl_->ros_node_->get_logger(), "Simulation reset called");
         impl_->Reset();
     }
 
     void RobotControlPluginPrivate::OnUpdate(const gazebo::common::UpdateInfo &_info) {
 
         const gazebo::common::Time &current_time = _info.simTime;
-        executor_->spin_some();
         std::vector<double> local_goal_vec;
         {
             std::lock_guard<std::mutex> lock(goal_lock_);
@@ -166,7 +162,6 @@ namespace gazebo_plugins {
     }
 
     void RobotControlPluginPrivate::Reset() {
-        executor_->spin_some();
         for (const auto &joint : joints_vec_) {
             joint->SetPosition(0, 0.0);
             joint->SetVelocity(0, 0.0);
