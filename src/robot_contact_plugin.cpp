@@ -37,8 +37,9 @@ namespace gazebo_plugins {
             return;
         }
 
+        auto qos_profile = rclcpp::QoS(20).reliable();
         impl_->contact_publisher_ = impl_->ros_node_->create_publisher<gazebo_msgs::msg::ContactsState>(
-                "/" + robotName + "/contacts", rclcpp::SensorDataQoS());
+                "/" + robotName + "/contacts", qos_profile);
 
         auto world_ptr = _model->GetWorld();
         auto physics_engine_ptr = world_ptr->Physics();

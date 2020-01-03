@@ -202,7 +202,7 @@ void MyJointStatePublisherPrivate::OnUpdate(const gazebo::common::UpdateInfo &in
     // If the world is reset, for example
     if (current_time < last_update_time_)
     {
-        RCLCPP_INFO(ros_node_->get_logger(), "Negative sim time difference detected.");
+        // RCLCPP_INFO(ros_node_->get_logger(), "Negative sim time difference detected.");
         last_update_time_ = current_time;
     }
 

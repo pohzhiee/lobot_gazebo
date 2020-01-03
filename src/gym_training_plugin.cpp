@@ -20,8 +20,16 @@ namespace gazebo_plugins{
         nodeOptions.start_parameter_services(false);
         ros_node_ = gazebo_ros::Node::CreateWithArgs(_sdf->Get<std::string>("name"), nodeOptions);
         world_ptr_ = _world;
-        auto srvCallback = std::bind(&GymTrainingPlugin::handle_GetSimTime, this, _1, _2, _3);
-        get_sim_time_srv_ = ros_node_->create_service<GetSimTime>("/get_current_sim_time", srvCallback);
+        // use lambda instead of bind, see here https://stackoverflow.com/questions/17363003/why-use-stdbind-over-lambdas-in-c14
+        auto getSimTimeCallback = [this](std::shared_ptr<rmw_request_id_t> a,
+                std::shared_ptr<GetSimTime::Request> b,
+                std::shared_ptr<GetSimTime::Response> c){this->handle_GetSimTime(a, b, c);};
+        auto moveModelCallback = [this](std::shared_ptr<rmw_request_id_t> a,
+                std::shared_ptr<MoveModel::Request> b,
+                std::shared_ptr<MoveModel::Response> c ){
+            this->handle_MoveModel(a, b, c); };
+        get_sim_time_srv_ = ros_node_->create_service<GetSimTime>("/get_current_sim_time", getSimTimeCallback);
+        mode_model_srv_ = ros_node_->create_service<MoveModel>("/move_model", moveModelCallback);
         RCLCPP_INFO_ONCE(ros_node_->get_logger(), "GymTrainingPlugin loaded");
         auto request_node = std::make_shared<rclcpp::Node>("robot_joint_state_plugin_request_node");
         auto update_rate = getUpdateRate(request_node);
@@ -84,7 +92,7 @@ namespace gazebo_plugins{
 
         // If the world is reset, for example
         if (current_time < last_update_time_){
-            RCLCPP_INFO(ros_node_->get_logger(), "Negative sim time difference detected.");
+            // RCLCPP_INFO(ros_node_->get_logger(), "Negative sim time difference detected.");
             last_update_time_ = current_time;
         }
 
@@ -100,13 +108,36 @@ namespace gazebo_plugins{
         world_ptr_->SetPaused(true);
     }
 
-    void GymTrainingPlugin::handle_GetSimTime(const std::shared_ptr<rmw_request_id_t> request_header,
-                           const std::shared_ptr<GetSimTime::Request> request,
-                           const std::shared_ptr<GetSimTime::Response> response){
+    void GymTrainingPlugin::handle_GetSimTime(const std::shared_ptr<rmw_request_id_t> &request_header,
+                           const std::shared_ptr<GetSimTime::Request> &request,
+                           const std::shared_ptr<GetSimTime::Response> &response){
         (void) request_header;
         (void) request;
         auto time = world_ptr_->SimTime();
         response->sec = time.sec;
         response->nanosec = time.nsec;
     }
+
+    void GymTrainingPlugin::handle_MoveModel(const std::shared_ptr<rmw_request_id_t> &request_header,
+                          const std::shared_ptr<MoveModel::Request> &request,
+                          const std::shared_ptr<MoveModel::Response> &response){
+        (void) request_header;
+        // Most likely not thread safe to mess with the models outside of the physics thread
+        // Ensure that this callback do not run when the physics thread is also running (i.e. simulation is unpaused)
+        // http://answers.gazebosim.org/question/21585/cannot-delete-models-when-using-the-transport-system/
+        auto model = world_ptr_->ModelByName(request->name);
+        if(model == nullptr){
+            response->success = false;
+            response->status_message = "Model [" + request->name + "] does not exist";
+            return;
+        }
+        auto sdf = model->GetSDF();
+        auto new_pose = ignition::math::Pose3d(request->x, request->y, request->z, request->roll, request->pitch, request->yaw);
+
+        sdf->GetElement("pose")->Set(new_pose);
+        model->Load(sdf);
+        response->status_message = "Success";
+        response->success = true;
+    }
+
 }

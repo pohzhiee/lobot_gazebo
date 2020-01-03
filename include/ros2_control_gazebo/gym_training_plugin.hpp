@@ -9,9 +9,11 @@
 #include <gazebo/physics/physics.hh>
 #include <gazebo_ros/node.hpp>
 #include <ros2_control_interfaces/srv/get_current_sim_time.hpp>
+#include <ros2_control_interfaces/srv/move_model.hpp>
 
 namespace gazebo_plugins {
     using GetSimTime = ros2_control_interfaces::srv::GetCurrentSimTime;
+    using MoveModel = ros2_control_interfaces::srv::MoveModel;
     class GymTrainingPlugin : public gazebo::WorldPlugin {
     public:
         GymTrainingPlugin();
@@ -26,11 +28,15 @@ namespace gazebo_plugins {
         gazebo::physics::WorldPtr world_ptr_;
         gazebo::event::ConnectionPtr update_connection_;
         rclcpp::Service<GetSimTime>::SharedPtr get_sim_time_srv_;
+        rclcpp::Service<MoveModel>::SharedPtr mode_model_srv_;
         void OnUpdate(const gazebo::common::UpdateInfo &info);
-        void handle_GetSimTime(const std::shared_ptr<rmw_request_id_t> request_header,
-                                     const std::shared_ptr<GetSimTime::Request> request,
-                                     const std::shared_ptr<GetSimTime::Response> response);
+        void handle_GetSimTime(const std::shared_ptr<rmw_request_id_t> &request_header,
+                                     const std::shared_ptr<GetSimTime::Request> &request,
+                                     const std::shared_ptr<GetSimTime::Response> &response);
 
+        void handle_MoveModel(const std::shared_ptr<rmw_request_id_t> &request_header,
+                              const std::shared_ptr<MoveModel::Request> &request,
+                              const std::shared_ptr<MoveModel::Response> &response);
         // Helper functions
         double getUpdateRate(const rclcpp::Node::SharedPtr& request_node);
     };
