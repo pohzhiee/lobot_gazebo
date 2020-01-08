@@ -24,12 +24,12 @@ namespace gazebo_plugins{
         auto getSimTimeCallback = [this](std::shared_ptr<rmw_request_id_t> a,
                 std::shared_ptr<GetSimTime::Request> b,
                 std::shared_ptr<GetSimTime::Response> c){this->handle_GetSimTime(a, b, c);};
-        auto moveModelCallback = [this](std::shared_ptr<rmw_request_id_t> a,
-                std::shared_ptr<MoveModel::Request> b,
-                std::shared_ptr<MoveModel::Response> c ){
-            this->handle_MoveModel(a, b, c); };
+        auto createMarkerCallback = [this](std::shared_ptr<rmw_request_id_t> a,
+                std::shared_ptr<CreateMarker::Request> b,
+                std::shared_ptr<CreateMarker::Response> c ){
+            this->handle_CreateMarker(a, b, c); };
         get_sim_time_srv_ = ros_node_->create_service<GetSimTime>("/get_current_sim_time", getSimTimeCallback);
-        mode_model_srv_ = ros_node_->create_service<MoveModel>("/move_model", moveModelCallback);
+        mode_model_srv_ = ros_node_->create_service<CreateMarker>("/create_marker", createMarkerCallback);
         RCLCPP_INFO_ONCE(ros_node_->get_logger(), "GymTrainingPlugin loaded");
         auto request_node = std::make_shared<rclcpp::Node>("robot_joint_state_plugin_request_node");
         auto update_rate = getUpdateRate(request_node);
@@ -118,24 +118,38 @@ namespace gazebo_plugins{
         response->nanosec = time.nsec;
     }
 
-    void GymTrainingPlugin::handle_MoveModel(const std::shared_ptr<rmw_request_id_t> &request_header,
-                          const std::shared_ptr<MoveModel::Request> &request,
-                          const std::shared_ptr<MoveModel::Response> &response){
+    void GymTrainingPlugin::handle_CreateMarker(const std::shared_ptr<rmw_request_id_t> &request_header,
+                                                const std::shared_ptr<CreateMarker::Request> &request,
+                                                const std::shared_ptr<CreateMarker::Response> &response){
         (void) request_header;
         // Most likely not thread safe to mess with the models outside of the physics thread
         // Ensure that this callback do not run when the physics thread is also running (i.e. simulation is unpaused)
         // http://answers.gazebosim.org/question/21585/cannot-delete-models-when-using-the-transport-system/
-        auto model = world_ptr_->ModelByName(request->name);
-        if(model == nullptr){
-            response->success = false;
-            response->status_message = "Model [" + request->name + "] does not exist";
-            return;
-        }
-        auto sdf = model->GetSDF();
-        auto new_pose = ignition::math::Pose3d(request->x, request->y, request->z, request->roll, request->pitch, request->yaw);
 
-        sdf->GetElement("pose")->Set(new_pose);
-        model->Load(sdf);
+        auto new_pose = ignition::math::Pose3d(request->x, request->y, request->z, request->roll, request->pitch, request->yaw);
+        auto diameter = request->diameter;
+        ignition::transport::Node node;
+
+        std::string topicName = "/marker";
+
+        // Publish to a Gazebo topic
+        auto pub = node.Advertise<ignition::msgs::Marker>(topicName);
+
+        // Create the marker message
+        ignition::msgs::Marker markerMsg;
+        markerMsg.set_ns("default");
+        markerMsg.set_id(request->id);
+        markerMsg.set_action(ignition::msgs::Marker::ADD_MODIFY);
+        markerMsg.set_type(ignition::msgs::Marker::SPHERE);
+        auto mat_ptr = markerMsg.mutable_material();
+        ignition::msgs::Set(mat_ptr->mutable_ambient(), ignition::math::Color(0.1, 0.8, 0.85, 1.0));
+        ignition::msgs::Set(mat_ptr->mutable_diffuse(), ignition::math::Color(0.1, 0.9, 0.9, 1.0));
+        ignition::msgs::Set(mat_ptr->mutable_specular(), ignition::math::Color(0.1, 1.0, 0.8, 1.0));
+        ignition::msgs::Set(mat_ptr->mutable_emissive(), ignition::math::Color(0.0, 0.0, 0.0, 0.0));
+        ignition::msgs::Set(markerMsg.mutable_scale(), ignition::math::Vector3d(diameter, diameter, diameter));
+        ignition::msgs::Set(markerMsg.mutable_pose(), new_pose);
+        node.Request(topicName, markerMsg);
+
         response->status_message = "Success";
         response->success = true;
     }
