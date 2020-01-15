@@ -1,10 +1,26 @@
 #include "ros2_control_gazebo/robot_control_plugin.hpp"
 #include "parameter_server_interfaces/srv/get_all_pid.hpp"
+#include "py_wrappers/forward_kinematics.hpp"
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 #include <functional>
 #include <string>
 #include <chrono>
 #include <algorithm>
+
+namespace{
+    std::unique_ptr<ForwardKinematics> fk_ptr;
+    bool is_valid_joint_values(const std::vector<double> &joint_states){
+        std::string lobot_desc_share_dir = ament_index_cpp::get_package_share_directory("lobot_description");
+        std::string urdf_path = lobot_desc_share_dir + "/robots/arm_standalone.urdf";
+        if(fk_ptr == nullptr){
+            fk_ptr = std::make_unique<ForwardKinematics>(urdf_path);
+        }
+        auto pose = fk_ptr->calculate("world", "grip_end_point", joint_states);
+        return !(pose.translation.z < 0);
+    }
+}
+
 
 namespace gazebo_plugins {
     constexpr double back_emf_constant = 0.8;
@@ -41,6 +57,7 @@ namespace gazebo_plugins {
 
         // Register the joints, make sure the relevant vectors are empty first
         impl_->pid_vec_.clear();
+        impl_->joints_vec_.clear();
         // Some joints from the parameter server may not exist in the robot
         uint8_t index = 0;
         for (auto &joint_name : joint_names) {
@@ -55,6 +72,7 @@ namespace gazebo_plugins {
             RCLCPP_INFO(impl_->ros_node_->get_logger(), "Registering joint %s with id %lu", joint_name.c_str(), index);
             auto pid = std::make_unique<gazebo::common::PID>(pid_params_map[joint_name]);
             impl_->pid_vec_.emplace_back(std::move(pid));
+            impl_->joints_vec_.emplace_back(std::move(joint));
             ++index;
         }
         // index+1 gives the total number of registered joints, so we can initialise our vectors appropriately
@@ -66,6 +84,15 @@ namespace gazebo_plugins {
         impl_->cmd_subscription_ = impl_->ros_node_->create_subscription<ros2_control_interfaces::msg::JointControl>(
                 "/" + robotName + "/control", qos_profile,
                 std::bind(&RobotControlPluginPrivate::CommandSubscriptionCallback, impl_, std::placeholders::_1));
+
+        // Create the set positions service
+        auto randomPositionsCallback = [this](std::shared_ptr<rmw_request_id_t> a,
+                                              std::shared_ptr<RandomPositions::Request> b,
+                                              std::shared_ptr<RandomPositions::Response> c) {
+            impl_->handle_RandomPositions(a, b, c);
+        };
+        impl_->random_positions_srv_ = impl_->ros_node_->create_service<RandomPositions>("/random_positions",
+                                                                                         randomPositionsCallback);
 
         SetUpdateRate(_sdf);
         impl_->last_update_time_ = _model->GetWorld()->SimTime();
@@ -86,6 +113,20 @@ namespace gazebo_plugins {
         {
             std::lock_guard<std::mutex> lock(goal_lock_);
             local_goal_vec = goal_vec_;
+        }
+        if (random_position) {
+            random_position.store(false);
+//            if(joints_vec_.size() != local_goal_vec.size()){
+//                RCLCPP_ERROR(ros_node_->get_logger(), "Registered number of joints don't match randomised joints, "
+//                                                      "joints_vec_size: %lu, goal_vec_size: %lu",
+//                                                      joints_vec_.size(), local_goal_vec.size());
+//            }
+//            else{
+            for (unsigned long i = 0; i < joints_vec_.size(); i++) {
+                joints_vec_[i]->SetPosition(0, local_goal_vec[i]);
+                RCLCPP_WARN(ros_node_->get_logger(),"Setting joint %s to %f", joints_vec_[i]->GetName().c_str(), local_goal_vec[i]);
+            }
+//            }
         }
 
         // If the world is reset, for example
@@ -115,7 +156,6 @@ namespace gazebo_plugins {
             auto error = current_pos - local_goal_vec[joint_index];
             double pid_output_command = pid->Update(error, time_since_last_update);
             command_vec_[joint_index] = pid_output_command;
-
         }
         UpdateForceFromCmdBuffer();
 
@@ -127,14 +167,15 @@ namespace gazebo_plugins {
             ros2_control_interfaces::msg::JointControl::UniquePtr msg) {
         // Uses map to write to buffer
         {
-            auto zero_time = rclcpp::Time(0,0,RCL_ROS_TIME);
+            auto zero_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
             auto msg_time = rclcpp::Time(msg->header.stamp, RCL_ROS_TIME);
             auto last_update_time = rclcpp::Time(last_update_time_.sec, last_update_time_.nsec, RCL_ROS_TIME);
-            if(msg_time > zero_time){
-                if(msg_time < last_update_time){
+            if (msg_time > zero_time) {
+                if (msg_time < last_update_time) {
                     RCLCPP_WARN(ros_node_->get_logger(),
-                            "Ignoring outdated message, Msg time: [%u][%lu], Last update time: [%u][%lu]",
-                            msg->header.stamp.sec, msg->header.stamp.nanosec, last_update_time_.sec, last_update_time_.nsec);
+                                "Ignoring outdated message, Msg time: [%u][%lu], Last update time: [%u][%lu]",
+                                msg->header.stamp.sec, msg->header.stamp.nanosec, last_update_time_.sec,
+                                last_update_time_.nsec);
                     return;
                 }
             }
@@ -170,10 +211,50 @@ namespace gazebo_plugins {
         for (const auto &pid : pid_vec_) {
             pid->Reset();
         }
-        for (auto &goal : goal_vec_) {
-            goal = 0;
+        {
+            std::lock_guard<std::mutex> lock(goal_lock_);
+            for (auto &goal : goal_vec_) {
+                goal = 0;
+            }
         }
-        last_update_time_ = gazebo::common::Time(0,0);
+        last_update_time_ = gazebo::common::Time(0, 0);
+    }
+
+    void RobotControlPluginPrivate::handle_RandomPositions(const std::shared_ptr<rmw_request_id_t> &request_header,
+                                                           const std::shared_ptr<RandomPositions::Request> &request,
+                                                           const std::shared_ptr<RandomPositions::Response> &response) {
+        (void) request_header;
+        (void) request;
+        {
+            std::lock_guard<std::mutex> lock(goal_lock_);
+            bool valid = false;
+            do{
+                response->joints.clear();
+                response->positions.clear();
+                response->joints.resize(joint_index_map_.size());
+                response->positions.resize(joint_index_map_.size());
+                for (auto &pair: joint_index_map_) {
+                    auto index = pair.second;
+                    auto &joint = joints_vec_[index];
+                    auto &pid = pid_vec_[index];
+
+                    auto upper_limit = joint->UpperLimit(0);
+                    auto lower_limit = joint->LowerLimit(0);
+                    std::uniform_real_distribution<double> dist(lower_limit, upper_limit);
+                    auto rand_angle = dist(rd_);
+                    joint->SetPosition(0, rand_angle);
+                    joint->SetVelocity(0, 0.0);
+                    joint->SetForce(0, 0.0);
+                    pid->Reset();
+                    goal_vec_[index] = rand_angle;
+                    response->joints[index] = (joint->GetName());
+                    response->positions[index] = (rand_angle);
+                    RCLCPP_INFO(ros_node_->get_logger(), "Joint %s with val %f", joint->GetName().c_str(), rand_angle);
+                }
+                valid = is_valid_joint_values(response->positions);
+            } while(!valid);
+            random_position.store(true);
+        }
     }
 
     void RobotControlPluginPrivate::UpdateForceFromCmdBuffer() {
@@ -221,8 +302,7 @@ namespace gazebo_plugins {
                                 current_time.sec, current_time.nsec, command, pTerm, iTerm, dTerm);
                 }*/
 
-            }
-            else {
+            } else {
                 RCLCPP_WARN(ros_node_->get_logger(), "Joint [%s] not found", joint_name.c_str());
             }
         }

@@ -30,7 +30,12 @@ find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(parameter_server_interfaces REQUIRED)
 find_package(ros2_control_interfaces REQUIRED)
+find_package(py_wrappers REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
+find_package(urdf REQUIRED)
+find_package(urdfdom_headers REQUIRED)
+find_package(kdl_parser REQUIRED)
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GAZEBO_CXX_FLAGS}")
 target_include_directories(robot_control_plugin PUBLIC include)
 ament_target_dependencies(
@@ -42,6 +47,13 @@ ament_target_dependencies(
         std_srvs
         parameter_server_interfaces
         ros2_control_interfaces
+        py_wrappers
+        ament_index_cpp
+        # The following 3 dependencies are because of the forward kinematics library
+        # Need to figure out some way such that it can link automatically to those rather than linking again
+        urdf
+        urdfdom_headers
+        kdl_parser
 )
 target_include_directories(my_joint_state_publisher PUBLIC include)
 ament_target_dependencies(

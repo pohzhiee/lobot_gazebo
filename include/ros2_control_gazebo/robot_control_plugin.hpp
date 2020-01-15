@@ -10,13 +10,16 @@
 #include <parameter_server_interfaces/srv/get_all_joints.hpp>
 #include <parameter_server_interfaces/srv/get_controller_pid.hpp>
 #include <ros2_control_interfaces/msg/joint_control.hpp>
+#include <ros2_control_interfaces/srv/random_positions.hpp>
 
 #include <unordered_map>
 #include <memory>
 #include <mutex>
+#include <random>
 
 namespace gazebo_plugins
 {
+using RandomPositions = ros2_control_interfaces::srv::RandomPositions;
 class RobotControlPluginPrivate
 {
 public:
@@ -44,10 +47,19 @@ public:
 
     rclcpp::Subscription<ros2_control_interfaces::msg::JointControl>::SharedPtr cmd_subscription_;
     void CommandSubscriptionCallback(ros2_control_interfaces::msg::JointControl::UniquePtr msg);
+
+    rclcpp::Service<RandomPositions>::SharedPtr random_positions_srv_;
+    void handle_RandomPositions(const std::shared_ptr<rmw_request_id_t> &request_header,
+                             const std::shared_ptr<RandomPositions::Request> &request,
+                             const std::shared_ptr<RandomPositions::Response> &response);
     void Reset();
 private:
     void UpdateForceFromCmdBuffer();
     std::mutex goal_lock_;
+
+    std::random_device rd_;
+
+    std::atomic_bool random_position{false};
 
 };
 
