@@ -124,7 +124,7 @@ namespace gazebo_plugins {
 //            else{
             for (unsigned long i = 0; i < joints_vec_.size(); i++) {
                 joints_vec_[i]->SetPosition(0, local_goal_vec[i]);
-                RCLCPP_WARN(ros_node_->get_logger(),"Setting joint %s to %f", joints_vec_[i]->GetName().c_str(), local_goal_vec[i]);
+//                RCLCPP_WARN(ros_node_->get_logger(),"Setting joint %s to %f", joints_vec_[i]->GetName().c_str(), local_goal_vec[i]);
             }
 //            }
         }
@@ -167,15 +167,19 @@ namespace gazebo_plugins {
             ros2_control_interfaces::msg::JointControl::UniquePtr msg) {
         // Uses map to write to buffer
         {
-            auto zero_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
-            auto msg_time = rclcpp::Time(msg->header.stamp, RCL_ROS_TIME);
-            auto last_update_time = rclcpp::Time(last_update_time_.sec, last_update_time_.nsec, RCL_ROS_TIME);
+//            auto zero_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            int64_t zero_time = 0;
+            int64_t msg_time = msg->header.stamp.sec * 1000000000 + msg->header.stamp.nanosec;
+            int64_t last_update_time = last_update_time_.sec * 1000000000 + last_update_time_.nsec;
+//            auto last_update_time = rclcpp::Time(last_update_time_.sec, last_update_time_.nsec, RCL_ROS_TIME);
             if (msg_time > zero_time) {
-                if (msg_time < last_update_time) {
+                int64_t time_buffer = 10000000;
+                int64_t time_diff = last_update_time - msg_time;
+                if (time_diff > time_buffer) {
                     RCLCPP_WARN(ros_node_->get_logger(),
                                 "Ignoring outdated message, Msg time: [%u][%lu], Last update time: [%u][%lu]",
-                                msg->header.stamp.sec, msg->header.stamp.nanosec, last_update_time_.sec,
-                                last_update_time_.nsec);
+                                msg->header.stamp.sec, msg->header.stamp.nanosec, last_update_time / 1000000000,
+                                last_update_time % 1000000000);
                     return;
                 }
             }
@@ -249,7 +253,7 @@ namespace gazebo_plugins {
                     goal_vec_[index] = rand_angle;
                     response->joints[index] = (joint->GetName());
                     response->positions[index] = (rand_angle);
-                    RCLCPP_INFO(ros_node_->get_logger(), "Joint %s with val %f", joint->GetName().c_str(), rand_angle);
+//                    RCLCPP_INFO(ros_node_->get_logger(), "Joint %s with val %f", joint->GetName().c_str(), rand_angle);
                 }
                 valid = is_valid_joint_values(response->positions);
             } while(!valid);
