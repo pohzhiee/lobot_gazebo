@@ -130,7 +130,7 @@ namespace gazebo_plugins{
         auto diameter = request->diameter;
         ignition::transport::Node node;
 
-        std::string topicName = "/marker";
+        std::string topicName = "marker";
 
         // Publish to a Gazebo topic
         auto pub = node.Advertise<ignition::msgs::Marker>(topicName);
